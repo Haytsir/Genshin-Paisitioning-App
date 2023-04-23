@@ -45,6 +45,7 @@ jobs:
           prerelease: false
     outputs:
       versionChanged: ${{ steps.version_check.outputs.versionChanged }}
+      releaseVersion: ${{ steps.version_check.outputs.releaseVersion }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
   # Release에 Asset 업로드
   upload_release_asset:
@@ -78,4 +79,6 @@ jobs:
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
         with:
+          name: ${{ needs.create_release.outputs.releaseVersion }}
+          tag_name: ${{ needs.create_release.outputs.releaseVersion }}
           files: genshin_paisitioning_app.zip
