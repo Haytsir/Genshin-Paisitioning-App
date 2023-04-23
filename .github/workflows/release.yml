@@ -23,6 +23,7 @@ jobs:
           fetch-depth: "0"
       # 2. Release 생성
       - name: create release
+        id: create_release
         uses: ncipollo/create-release@latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
