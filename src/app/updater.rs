@@ -110,7 +110,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
                     args.extend(std::env::args());
                     let mut i = 0;
                     for a in std::env::args() {
-                        if(i > 0) {
+                        if i > 0 {
                             args.push(a);
                         }
                         i = i+1;

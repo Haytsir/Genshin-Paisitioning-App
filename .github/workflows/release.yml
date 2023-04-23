@@ -51,7 +51,7 @@ jobs:
     # Action 실행 환경: windows-latest
     needs: create_release
     runs-on: windows-latest
-    if: needs.create_release.outputs.versionChanged
+    if: ${{ needs.create_release.outputs.versionChanged }}
     # Action 실행 작업들
     steps:
       # 1. Checkout code

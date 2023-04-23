@@ -1,0 +1,29 @@
+on:
+  workflow_call:
+    inputs:
+      rust-version:
+        type: string
+        required: false
+        default: stable
+
+jobs:
+  check_version:
+    runs-on: windows-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v3
+      - name: Check Release Version
+        id: version_check
+        uses: thebongy/version-check@v1
+        with:
+          file: Cargo.toml
+          tagFormat: v${version}
+    outputs:
+      versionChanged: ${{ steps.version_check.outputs.versionChanged }}
+  after_check:
+    needs: check_version
+    if: needs.versionChanged.outputs.versionChanged == true
+    # Action 실행 환경: ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "version changed"
