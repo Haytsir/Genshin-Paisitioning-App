@@ -3,6 +3,7 @@ use std::path::Path;
 extern crate winres;
 
 fn main() {
+    println!("cargo:warning=MESSAGE");
     if cfg!(target_os = "windows") {
         let mut res = winres::WindowsResource::new();
         let major_version: u64 = env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap();
