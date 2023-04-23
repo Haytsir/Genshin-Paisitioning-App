@@ -55,13 +55,6 @@ pub fn check_proj_directory() -> bool {
 
 pub fn check_elevation(target: &Path, args: Vec<&str>) -> bool {
     unsafe {
-        let mut name: Vec<i8> = Vec::new();
-        name.resize(200, 0i8);
-        let length = GetModuleFileNameA(null_mut(), name.as_ptr() as *mut i8, 200);
-        let mut path: Vec<u8> = Vec::new();
-        for i in 0..length as usize {
-            path.push(name[i] as u8);
-        }
         if is_elevated() {
             return true;
         } else {
@@ -76,6 +69,19 @@ pub fn check_elevation(target: &Path, args: Vec<&str>) -> bool {
         }
     }
     false
+}
+
+pub fn run_shell_execute(target: &Path, args: Vec<String>) {
+    unsafe {
+        ShellExecuteA(
+            null_mut(),
+            CString::new("runas").unwrap().as_ptr(),
+            CString::new(target.to_str().unwrap()).unwrap().as_ptr(),
+            CString::new(args.join(" ")).unwrap().as_ptr(),
+            null_mut(),
+            1,
+        );
+    }
 }
 
 pub fn is_elevated() -> bool {

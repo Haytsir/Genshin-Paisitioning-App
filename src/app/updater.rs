@@ -1,5 +1,6 @@
 use reqwest::blocking::Client;
 use serde_json::Value;
+use crate::app::terminate_process;
 //use sevenz_rust::default_entry_extract_fn;
 use crate::models::WsEvent;
 use crate::models::{AppEvent, UpdateInfo};
@@ -12,6 +13,121 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Result<()> {
+    let owner = "Haytsir";
+    let repo: &str = "Genshin-Paisitioning-App";
+
+    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
+    let cache_dir = proj_dirs.cache_dir().to_path_buf();
+
+    // 최신 릴리스 정보 가져오기
+    let client = Client::new();
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        owner, repo
+    );
+    let response = client.get(&url).header("User-Agent", "reqwest").send()?;
+    let json: Value = serde_json::from_str(&response.text()?)?;
+
+    // 태그 이름 가져오기
+    let version = env!("CARGO_PKG_VERSION");
+    let release_name = &json["tag_name"].as_str().unwrap_or("")[1..];
+
+    // 업데이트를 요청한 유저에게 보낼 update info 생성
+    let mut update_info = UpdateInfo {
+        target_type: "app".to_string(),
+        current_version: version.to_string(),
+        target_version: release_name.to_string(),
+        downloaded: 0,
+        file_size: 0,
+        percent: 0.0,
+        done: false,
+    };
+
+    // 버전 비교
+    if compare_versions(version, release_name) {
+        log::debug!("현재 GPA 버전이 최신 버전 {}과 일치합니다.", release_name);
+        update_info.done = true;
+        // 처음 상황을 전송한다.
+        let _ = sender.unwrap().send(WsEvent::UpdateInfo(
+            update_info,
+            requester_id,
+        ));
+        return Ok(());
+    } else {
+        log::debug!(
+            "현재 CVAT 버전은 최신 버전 {}과 일치하지 않습니다.",
+            release_name
+        );
+    }
+
+    // 첨부 파일 가져오기
+    let assets = &json["assets"];
+    for asset in assets.as_array().unwrap() {
+        let asset_url = asset["browser_download_url"].as_str().unwrap();
+        let asset_name = asset["name"].as_str().unwrap();
+        log::debug!("{} 다운로드 시도", asset_url);
+        log::debug!("파일명: {}", asset_name);
+        let sender = sender.clone();
+
+        // github에서 받은 파일이 .zip 확장자인 경우
+        if asset_name.ends_with(".zip") {
+            // 파일 다운로드 및 저장
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            // arch_path: .zip 파일의 경로
+            let arch_path = cache_dir.join(asset_name);
+            let res = runtime
+                .handle()
+                .block_on(download_file(
+                    asset_url,
+                    &arch_path,
+                    sender.clone(),
+                    update_info.clone(),
+                    requester_id.clone(),
+                ))
+                .and_then(|()| {
+                    std::thread::sleep(Duration::from_millis(1000));
+
+                    // 추출할 파일 확장자와, 대상 경로를 가진 해쉬맵 구성
+                    let mut mappings = HashMap::new();
+                    log::debug!("{}", arch_path.display());
+
+                    mappings.insert("exe", &cache_dir);
+                    extract_files_with_extensions(&arch_path, mappings)?;
+                    Ok(())
+                });
+            match res {
+                Ok(_) => {
+                    let mut update_info = update_info.clone();
+                    update_info.done = true;
+                    let _ = sender.as_ref().unwrap().send(WsEvent::UpdateInfo(
+                        update_info,
+                        requester_id.clone(),
+                    ));
+
+                    let mut args: Vec<String> = vec!["--update".to_string()];
+                    args.extend(std::env::args());
+                    let mut i = 0;
+                    for a in std::env::args() {
+                        if(i > 0) {
+                            args.push(a);
+                        }
+                        i = i+1;
+                    }
+                    
+                    std::thread::sleep(Duration::from_millis(1000));
+                    super::run_shell_execute(&cache_dir.join(asset_name), args);
+                    terminate_process();
+                }
+                Err(e) => {
+                    log::debug!("{}", e)
+                }
+            }
+        }
+    }
+    return Ok(());
+}
 
 pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> Result<()> {
     let owner = "GengGode"; // GitHub 저장소 소유자 이름
@@ -34,12 +150,13 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
     let response = client.get(&url).header("User-Agent", "reqwest").send()?;
     let json: Value = serde_json::from_str(&response.text()?)?;
 
-    // 릴리스 이름 가져오기
+    // 태그 이름 가져오기
     let version = get_local_version(&lib_path);
-    let release_name = json["name"].as_str().unwrap_or("");
+    let release_name = json["tag_name"].as_str().unwrap_or("");
 
     // 업데이트를 요청한 유저에게 보낼 update info 생성
     let mut update_info = UpdateInfo {
+        target_type: "cvat".to_string(),
         current_version: version.clone(),
         target_version: release_name.to_string(),
         downloaded: 0,
@@ -49,7 +166,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
     };
 
     // 버전 비교
-    if compare_versions(&version, release_name) {
+    if compare_versions(&version.as_str(), release_name) {
         log::debug!("현재 CVAT 버전이 최신 버전 {}과 일치합니다.", release_name);
         update_info.done = true;
         // 처음 상황을 전송한다.
@@ -164,7 +281,7 @@ fn get_local_version(lib_path: &PathBuf) -> String {
     }
 }
 
-pub fn compare_versions(version: &String, release_name: &str) -> bool {
+pub fn compare_versions(version: &str, release_name: &str) -> bool {
     // version.tag 파일에서 버전 정보 가져오기
     /* let version_file = File::open("./cvAutoTrack/version.tag").unwrap();
     let version = BufReader::new(version_file).lines().next().unwrap().unwrap().trim().to_string(); */

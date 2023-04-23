@@ -23,6 +23,21 @@ pub fn install() {
     }
 }
 
+pub fn update() {
+    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
+    let target_dir = proj_dirs.cache_dir().parent().unwrap();
+    let current_exe = std::env::current_exe().unwrap();
+    let exe_name = current_exe.file_name().unwrap();
+    if check_elevation(&target_dir.join(exe_name), vec!["--install"]) {
+        log::debug!("Installing...");
+        let exe_path = &target_dir.join(exe_name);
+        register_url_scheme(exe_path);
+        register_uninstall_item(exe_path);
+        create_config_file_if_not_exist(&target_dir.join("config.json"));
+        let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 완료했습니다.", msgbox::IconType::None);
+    }
+}
+
 pub fn uninstall() {
     let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
     let target_dir = proj_dirs.cache_dir().parent().unwrap();

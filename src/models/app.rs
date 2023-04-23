@@ -31,6 +31,7 @@ impl Clone for AppConfig {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
+    pub target_type: String,
     pub target_version: String,
     pub current_version: String,
     pub downloaded: u64,
