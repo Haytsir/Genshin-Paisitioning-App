@@ -43,6 +43,7 @@ jobs:
           draft: false
           prerelease: false
     outputs:
+      versionChanged: ${{ steps.version_check.outputs.versionChanged }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
   # Release에 Asset 업로드
   upload_release_asset:
