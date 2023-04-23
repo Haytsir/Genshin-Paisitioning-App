@@ -13,12 +13,7 @@ jobs:
       - name: Check out
         uses: actions/checkout@v3
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ inputs.rust-version }}
-          override: true
-          components: rustfmt, clippy
+        run: rustup toolchain install stable --profile minimal
       - name: Set up cargo cache
         uses: Swatinem/rust-cache@v2
         continue-on-error: false
