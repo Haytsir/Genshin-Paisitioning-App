@@ -17,7 +17,13 @@ jobs:
       versionChanged: ${{ steps.version_check.outputs.versionChanged }}
   after_check:
     needs: check_version
-    if: needs.versionChanged.outputs.versionChanged == true
+    # Action 실행 환경: ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ${{ needs.versionChanged.outputs.versionChanged }}
+  finally:
+    needs: check_version
+    if: ${{ needs.check_version.outputs.versionChanged }}
     # Action 실행 환경: ubuntu-latest
     runs-on: ubuntu-latest
     steps:
