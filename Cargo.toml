@@ -2,7 +2,7 @@
 name = "genshin_paisitioning_app"
 authors = ["Hayts"]
 description = "원신 파이지셔닝 앱"
-version = "1.0.1717"
+version = "1.0.1718"
 repository = "https://github.com/Haytsir/Genshin-Paisitioning-App"
 edition = "2021"
 build = "src/build.rs"
