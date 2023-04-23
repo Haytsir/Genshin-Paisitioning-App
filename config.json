@@ -1,0 +1,5 @@
+{
+  "captureInterval": 2500,
+  "captureDelayOnError": 8000,
+  "useBitBltCaptureMode": false
+}

@@ -1,0 +1,65 @@
+name: "Release"
+
+permissions:
+  contents: "write"
+
+# Action 발동 조건: version tag 생성시
+on:
+  push:
+    tags: "v*"
+
+# Action 실행
+jobs:
+  # Release 생성
+  create_release:
+    # Action 실행 환경: ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      # Action 실행전에 필요한 작업
+      # 1. Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: "0"
+      # 2. Release 생성
+      - name: create release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+  # Release에 Asset 업로드
+  upload_release_asset:
+    # Action 실행 환경: windows-latest
+    needs: create_release
+    runs-on: windows-latest
+    # Action 실행 작업들
+    steps:
+      # 1. Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v2
+      # 2. Build Rust Proeject as Release
+      - name: Build project
+        run: cargo build --release --locked
+      # 3. Compress Builded File
+      - name: compress
+        uses: thedoctor0/zip-release@0.7.1
+        with:
+          type: "zip"
+          filename: "genshin_paisitioning_app.zip"
+          path: "./target/release/genshin_paisitioning_app.exe"
+      # 4. Upload Release Asset
+      - name: upload release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ./target/release/genshin_paisitioning_app.zip
+          asset_name: genshin_paisitioning_app.zip
+          asset_content_type: application/zip
