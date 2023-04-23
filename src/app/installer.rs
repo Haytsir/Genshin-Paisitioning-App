@@ -19,7 +19,7 @@ pub fn install() {
         register_url_scheme(exe_path);
         register_uninstall_item(exe_path);
         create_config_file_if_not_exist(&target_dir.join("config.json"));
-    } else {
+        let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 완료했습니다.", msgbox::IconType::None);
     }
 }
 
@@ -39,7 +39,6 @@ pub fn uninstall() {
             )
             .as_str(),
         );
-    } else {
     }
 }
 

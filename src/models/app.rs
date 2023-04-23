@@ -20,6 +20,7 @@ pub struct AppConfig {
     pub capture_interval: u32,
     pub capture_delay_on_error: u32,
     pub use_bit_blt_capture_mode: bool,
+    pub changed: Option<bool>,
 }
 impl Clone for AppConfig {
     fn clone(&self) -> AppConfig {

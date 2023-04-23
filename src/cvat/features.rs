@@ -103,7 +103,7 @@ pub fn cvat_event_handler(
                     t.send(WsEvent::Config(app_config, id)).unwrap();
                 }
             }
-            Ok(AppEvent::SetConfig(new_app_config, id)) => {
+            Ok(AppEvent::SetConfig(mut new_app_config, id)) => {
                 log::debug!("Got SetConfig");
                 if let Some(t) = tx.as_ref() {
                     let new_config = Config::builder()
@@ -121,6 +121,7 @@ pub fn cvat_event_handler(
                         .unwrap();
                     on_config_changed(config.clone(), new_config.clone());
                     config = new_config;
+                    new_app_config.changed = Some(true);
                     t.send(WsEvent::Config(new_app_config, id)).unwrap();
                 }
             }
