@@ -108,33 +108,6 @@ pub fn run_cmd(cmd: &str) {
         .status();
 }
 
-pub fn elevate(target: &std::path::PathBuf, args: Vec<&str>) {
-    log::debug!("관리자 권한으로 실행 중...");
-    let _ = Command::new("powershell")
-        .args([
-            "-Command",
-            "Start-Process",
-            "-Verb",
-            "runas",
-            "-FilePath",
-            target.to_str().unwrap(),
-            "-ArgumentList",
-            format!("\"{}\"", args.join(" ")).as_str(),
-        ])
-        .status();
-    /*- https://stackoverflow.com/questions/60750113/how-do-i-hide-the-console-window-for-a-process-started-with-stdprocesscomman
-        use std::process::Command;
-    use std::os::windows::process::CommandExt;
-
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    const DETACHED_PROCESS: u32 = 0x00000008;
-
-    let mut command = Command::new("cmd").args(&["/C", "start", &exe_path]);
-    command.creation_flags(DETACHED_PROCESS); // Be careful: This only works on windows
-
-    // If you use DETACHED_PROCESS you could set stdout, stderr, and stdin to Stdio::null() to avoid possible allocations. */
-}
-
 pub fn is_process_already_running() -> bool {
     let mut system = System::new_all();
     system.refresh_all();

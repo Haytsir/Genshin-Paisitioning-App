@@ -2,8 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![warn(unused_crate_dependencies)]
 
-use crossbeam as _;
-use tempfile as _;
 mod app;
 mod cvat;
 mod models;
