@@ -51,7 +51,7 @@ jobs:
     needs: create_release
     runs-on: windows-latest
     if: github.ref == 'refs/heads/master'
-    if: ${{ needs.create_release.outputs.versionChanged }} == true
+    if: ${{ needs.create_release.outputs.versionChanged }}
     # Action 실행 작업들
     steps:
       # 1. Checkout code
