@@ -20,7 +20,7 @@ jobs:
     # Action 실행 환경: ubuntu-latest
     runs-on: ubuntu-latest
     steps:
-      - run: echo ${{ needs.versionChanged.outputs.versionChanged }}
+      - run: echo ${{ needs.check_version.outputs.versionChanged }}
   finally:
     needs: check_version
     if: ${{ needs.check_version.outputs.versionChanged }}

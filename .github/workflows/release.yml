@@ -4,11 +4,13 @@ permissions:
   contents: "write"
 
 # Action 발동 조건: version tag 생성시
+#on:
+#  push:
+#    branches:
+#      - master
 on:
-  push:
-    branches:
-      - master
-
+  workflow_dispatch
+  
 # Action 실행
 jobs:
   # Release 생성
