@@ -825,7 +825,7 @@ dependencies = [
 
 [[package]]
 name = "genshin_paisitioning_app"
-version = "1.1.0"
+version = "1.0.1722"
 dependencies = [
  "config",
  "crossbeam-channel",

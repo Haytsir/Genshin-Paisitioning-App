@@ -108,15 +108,6 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
                             log::debug!("{}", e);
                         }
                     }
-                    let current_exe = std::env::current_exe().unwrap();
-                    let exe_name = current_exe.file_name().unwrap();
-                    let remove_res = std::fs::remove_file(cache_dir.join(exe_name));
-                    match remove_res {
-                        Ok(_) => {}
-                        Err(e) => {
-                            log::debug!("{}", e);
-                        }
-                    }
 
                     let mut update_info = update_info.clone();
                     update_info.done = true;
