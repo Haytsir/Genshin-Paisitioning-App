@@ -42,9 +42,7 @@ fn main() {
             ready(param_vec);
         } else {
             if a.eq("--debug") || a.eq("-d") {
-                env_logger::builder()
-                    .filter_level(LevelFilter::Debug)
-                    .init();
+                app::enable_debug();
                 log::debug!("Logging debug messages.");
             }
             if a.eq("--install") || a.eq("-i") {
@@ -58,9 +56,6 @@ fn main() {
             }
         }
     }
-
-    cvat::get_compile_version();
-    cvat::get_compile_time();
 }
 
 fn ready(param: Vec<&str>) {
@@ -71,9 +66,7 @@ fn ready(param: Vec<&str>) {
     let config = app::config::init_config();
 
     if param.contains(&"debug") {
-        env_logger::builder()
-            .filter_level(LevelFilter::Debug)
-            .init();
+        app::enable_debug();
     }
     if param.contains(&"launch") {
         let ws_handler_sender = cvat_sender;

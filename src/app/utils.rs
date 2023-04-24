@@ -4,7 +4,6 @@ use std::path::Path;
 use std::process::Command;
 use std::ptr::null_mut;
 use sysinfo::{ProcessExt, System, SystemExt};
-use winapi::um::libloaderapi::GetModuleFileNameA;
 use winapi::um::shellapi::ShellExecuteA;
 use winapi::um::{
     processthreadsapi::{GetCurrentProcess, OpenProcessToken},
@@ -131,4 +130,106 @@ pub fn is_process_already_running() -> bool {
 
 pub fn terminate_process() {
     std::process::exit(0);
+}
+use std::sync::{Once};
+static ONCE_DEBUG: Once = Once::new();
+use log4rs::{
+    append::{
+        console::{ConsoleAppender, Target},
+        file::FileAppender,
+    },
+    config::{Appender, Config, Root},
+    encode::pattern::PatternEncoder,
+    filter::threshold::ThresholdFilter,
+};
+pub fn enable_debug() -> Result<(), log::SetLoggerError> {
+    std::env::set_var("RUST_LOG", "debug");
+    std::env::set_var("RUST_BACKTRACE", "1");
+
+    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
+    // target_dir의 내용이 프로젝트 디렉토리의 Root가 된다.
+    let target_dir = proj_dirs.cache_dir().parent().unwrap().join("logs");
+    
+    // 파일 로거를 생성한다.
+    // 패턴: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
+    let logfile_trace = FileAppender::builder()
+    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+    .build(target_dir.join("trace.log"))
+    .unwrap();
+
+    let logfile_debug = FileAppender::builder()
+    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+    .build(target_dir.join("debug.log"))
+    .unwrap();
+
+    let logfile_info = FileAppender::builder()
+    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+    .build(target_dir.join("info.log"))
+    .unwrap();
+
+    let logfile_warn = FileAppender::builder()
+    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+    .build(target_dir.join("warn.log"))
+    .unwrap();
+
+    let logfile_error = FileAppender::builder()
+    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+    .build(target_dir.join("error.log"))
+    .unwrap();
+
+
+    let config = Config::builder()
+        // Debug 메세지를 StdOut으로 출력하는 로거를 생성한다.
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Debug)))
+                .build("stdout", Box::new(ConsoleAppender::builder().target(Target::Stdout).build())),
+        )
+
+        // Trace 메세지를 log/trace.log 파일로 출력하는 로거를 생성한다.
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Trace)))
+                .build("trace", Box::new(logfile_trace))
+        )
+
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Debug)))
+                .build("debug", Box::new(logfile_debug))
+        )
+        
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
+                .build("info", Box::new(logfile_info))
+        )
+
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Warn)))
+                .build("warn", Box::new(logfile_warn))
+        )
+
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Error)))
+                .build("error", Box::new(logfile_error))
+        )
+        
+        .build(
+            Root::builder()
+                .appender("stdout")
+                .appender("trace")
+                .appender("debug")
+                .appender("info")
+                .appender("warn")
+                .appender("error")
+                .build(log::LevelFilter::Debug),
+        )
+        .unwrap();
+
+    let _handle = log4rs::init_config(config)?;
+
+    Ok(())
 }

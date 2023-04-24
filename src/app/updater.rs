@@ -169,7 +169,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
     // 업데이트를 요청한 유저에게 보낼 update info 생성
     let mut update_info = UpdateInfo {
         target_type: "cvat".to_string(),
-        current_version: version.clone(),
+        current_version: version.to_string(),
         target_version: release_name.to_string(),
         downloaded: 0,
         file_size: 0,
@@ -179,7 +179,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
     };
 
     // 버전 비교
-    if compare_versions(&version.as_str(), release_name) {
+    if compare_versions(&version, release_name) {
         log::debug!("현재 CVAT 버전이 최신 버전 {}과 일치합니다.", release_name);
         update_info.done = true;
         update_info.updated = false;
@@ -290,7 +290,7 @@ fn get_local_version(lib_path: &PathBuf) -> String {
         Ok(contents) => contents.trim().to_string(),
         Err(_) => {
             log::debug!("Error: Failed to read version tag file.");
-            "".to_string()
+            String::from("")
         }
     }
 }
@@ -300,16 +300,18 @@ pub fn compare_versions(version: &str, release_name: &str) -> bool {
     if version.eq(latest_version) {
         return true;
     } else {
-        let current_semver = version.split('.').map(|s| s.parse::<i32>().unwrap()).collect::<Vec<i32>>();
-        let latest_semver = latest_version.split('.').map(|s| s.parse::<i32>().unwrap()).collect::<Vec<i32>>();
-        if current_semver[0] > latest_semver[0] {
-            return true;
-        } else if current_semver[0] == latest_semver[0] {
-            if current_semver[1] > latest_semver[1] {
+        if version.len() > 0 && release_name.len() > 0 {
+            let current_semver = version.split('.').map(|s| s.parse::<i32>().unwrap()).collect::<Vec<i32>>();
+            let latest_semver = latest_version.split('.').map(|s| s.parse::<i32>().unwrap()).collect::<Vec<i32>>();
+            if current_semver[0] > latest_semver[0] {
                 return true;
-            } else if current_semver[1] == latest_semver[1] {
-                if current_semver[2] >= latest_semver[2] {
+            } else if current_semver[0] == latest_semver[0] {
+                if current_semver[1] > latest_semver[1] {
                     return true;
+                } else if current_semver[1] == latest_semver[1] {
+                    if current_semver[2] >= latest_semver[2] {
+                        return true;
+                    }
                 }
             }
         }
@@ -520,11 +522,12 @@ pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>
                             .parent()
                             .unwrap()
                             .join("cvAutoTrack"); // 저장할 파일 경로 및 이름
-                    let version = get_local_version(&lib_path);
+                    let version_string = get_local_version(&lib_path);
+                    let version = version_string.as_str();
                     // 업데이트를 요청한 유저에게 보낼 update info 생성
                     let update_info = UpdateInfo {
                         target_type: "lib".to_string(),
-                        current_version: version,
+                        current_version: version.to_string(),
                         target_version: String::from(""),
                         downloaded: 0,
                         file_size: 0,
