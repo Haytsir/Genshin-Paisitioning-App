@@ -23,8 +23,11 @@ fn main() {
         let target_dir = proj_dirs.cache_dir().parent().unwrap();
         let current_exe = std::env::current_exe().unwrap();
         let exe_name = current_exe.file_name().unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(5));
         if std::env::args().find(|x| x.eq("--update")).is_none() {
-            app::run_shell_execute(&target_dir.join(exe_name), std::env::args().collect());
+            if !app::check_elevation(&target_dir.join(exe_name), vec!["--install"]) {
+                return;
+            }
         }
     }
 
