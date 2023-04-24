@@ -75,7 +75,7 @@ pub fn run_shell_execute(target: &Path, args: Vec<String>) {
     unsafe {
         ShellExecuteA(
             null_mut(),
-            CString::new("runas").unwrap().as_ptr(),
+            null_mut(),
             CString::new(target.to_str().unwrap()).unwrap().as_ptr(),
             CString::new(args.join(" ")).unwrap().as_ptr(),
             null_mut(),
