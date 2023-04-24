@@ -2,7 +2,7 @@
 name = "genshin_paisitioning_app"
 authors = ["Hayts"]
 description = "원신 파이지셔닝 앱"
-version = "1.0.1720"
+version = "1.0.1719"
 repository = "https://github.com/Haytsir/Genshin-Paisitioning-App"
 edition = "2021"
 build = "src/build.rs"
@@ -25,6 +25,7 @@ threadpool = "1"
 crossbeam-channel = "0.5"
 once_cell = "1"
 reqwest = { version = "0.11", features = ["stream", "blocking", "json"] } # cvat를 다운로드하는 요청을 보내기 위함
+zip="*"
 sevenz-rust={version="*", features=["aes256"]}
 directories = "5"
 winapi = {version="*", features = ["securitybaseapi", "wincon", "winuser"]}

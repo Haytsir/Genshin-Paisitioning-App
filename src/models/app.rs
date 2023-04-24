@@ -17,6 +17,8 @@ impl Clone for AppInfo {
 #[derive(Serialize, Deserialize, Debug, Copy)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
+    pub auto_app_update: bool,
+    pub auto_lib_update: bool,
     pub capture_interval: u32,
     pub capture_delay_on_error: u32,
     pub use_bit_blt_capture_mode: bool,
@@ -38,6 +40,7 @@ pub struct UpdateInfo {
     pub file_size: u64,
     pub percent: f64,
     pub done: bool,
+    pub updated: bool
 }
 
 #[derive(Serialize, Deserialize)]

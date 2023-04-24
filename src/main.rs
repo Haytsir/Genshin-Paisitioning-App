@@ -89,7 +89,7 @@ fn ready(param: Vec<&str>) {
             let updater_handler_sender = ws_sender.clone();
             let updater_handler_receiver = cvat_receiver.clone();
             let ready =
-                updater_event_handler(Some(updater_handler_sender), Some(updater_handler_receiver));
+                updater_event_handler(config.clone(), Some(updater_handler_sender), Some(updater_handler_receiver));
             if ready {
                 let cvat_handler_sender = ws_sender.clone();
                 let cvat_handler_receiver = cvat_receiver.clone();

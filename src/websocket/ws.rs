@@ -105,6 +105,16 @@ fn client_msg(id: &str, msg: Message, _clients: &Clients, sender: Sender<AppEven
                 }
             };
         }
+        "checkAppUpdate" => {
+            log::debug!("checkAppUpdate!");
+            let res = sender.send(AppEvent::CheckAppUpdate(id.to_string()));
+            match res {
+                Ok(_) => {}
+                Err(e) => {
+                    log::error!("Failed checkAppUpdate: {e}")
+                }
+            }
+        }
         "checkLibUpdate" => {
             log::debug!("checkLibUpdate!");
             let res = sender.send(AppEvent::CheckLibUpdate(id.to_string()));

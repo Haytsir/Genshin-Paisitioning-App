@@ -25,6 +25,8 @@ pub fn init_config() -> Config {
 pub fn create_config_file_if_not_exist(target_path: &PathBuf) {
     if !target_path.exists() {
         let app_config = AppConfig {
+            auto_app_update: true,
+            auto_lib_update: true,
             capture_interval: 250,
             capture_delay_on_error: 1000,
             use_bit_blt_capture_mode: false,

@@ -2,13 +2,13 @@ use reqwest::blocking::Client;
 use serde_json::Value;
 use crate::app::terminate_process;
 //use sevenz_rust::default_entry_extract_fn;
-use crate::models::WsEvent;
+use crate::models::{WsEvent, AppConfig};
 use crate::models::{AppEvent, UpdateInfo};
 use crossbeam_channel::{Receiver, Sender};
 use directories::ProjectDirs;
 use sevenz_rust::*;
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{File, self};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -43,12 +43,14 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
         file_size: 0,
         percent: 0.0,
         done: false,
+        updated: true
     };
 
     // 버전 비교
     if compare_versions(version, release_name) {
         log::debug!("현재 GPA 버전이 최신 버전 {}과 일치합니다.", release_name);
         update_info.done = true;
+        update_info.updated = false;
         // 처음 상황을 전송한다.
         let _ = sender.unwrap().send(WsEvent::UpdateInfo(
             update_info,
@@ -57,7 +59,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
         return Ok(());
     } else {
         log::debug!(
-            "현재 CVAT 버전은 최신 버전 {}과 일치하지 않습니다.",
+            "현재 GPA 버전은 최신 버전 {}과 일치하지 않습니다.",
             release_name
         );
     }
@@ -94,11 +96,28 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
                     log::debug!("{}", arch_path.display());
 
                     mappings.insert("exe", &cache_dir);
-                    extract_files_with_extensions(&arch_path, mappings)?;
-                    Ok(())
+                    extract_files_from_zip(&arch_path, mappings)?;
+                    return Ok(());
                 });
             match res {
                 Ok(_) => {
+                    let remove_res = std::fs::remove_file(cache_dir.join(asset_name));
+                    match remove_res {
+                        Ok(_) => {}
+                        Err(e) => {
+                            log::debug!("{}", e);
+                        }
+                    }
+                    let current_exe = std::env::current_exe().unwrap();
+                    let exe_name = current_exe.file_name().unwrap();
+                    let remove_res = std::fs::remove_file(cache_dir.join(exe_name));
+                    match remove_res {
+                        Ok(_) => {}
+                        Err(e) => {
+                            log::debug!("{}", e);
+                        }
+                    }
+
                     let mut update_info = update_info.clone();
                     update_info.done = true;
                     let _ = sender.as_ref().unwrap().send(WsEvent::UpdateInfo(
@@ -117,7 +136,9 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
                     }
                     
                     std::thread::sleep(Duration::from_millis(1000));
-                    super::run_shell_execute(&cache_dir.join(asset_name), args);
+                    let current_exe = std::env::current_exe().unwrap();
+                    let exe_name = current_exe.file_name().unwrap();
+                    super::run_shell_execute(&cache_dir.join(exe_name), args);
                     terminate_process();
                 }
                 Err(e) => {
@@ -163,12 +184,14 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
         file_size: 0,
         percent: 0.0,
         done: false,
+        updated: true,
     };
 
     // 버전 비교
     if compare_versions(&version.as_str(), release_name) {
         log::debug!("현재 CVAT 버전이 최신 버전 {}과 일치합니다.", release_name);
         update_info.done = true;
+        update_info.updated = false;
         // 처음 상황을 전송한다.
         let _ = sender.unwrap().send(WsEvent::UpdateInfo(
             update_info,
@@ -282,11 +305,26 @@ fn get_local_version(lib_path: &PathBuf) -> String {
 }
 
 pub fn compare_versions(version: &str, release_name: &str) -> bool {
-    // version.tag 파일에서 버전 정보 가져오기
-    /* let version_file = File::open("./cvAutoTrack/version.tag").unwrap();
-    let version = BufReader::new(version_file).lines().next().unwrap().unwrap().trim().to_string(); */
     let latest_version = release_name.trim();
-    version.eq(latest_version)
+    if version.eq(latest_version) {
+        return true;
+    } else {
+        let current_semver = version.split('.').map(|s| s.parse::<i32>().unwrap()).collect::<Vec<i32>>();
+        let latest_semver = latest_version.split('.').map(|s| s.parse::<i32>().unwrap()).collect::<Vec<i32>>();
+        if current_semver[0] > latest_semver[0] {
+            return true;
+        } else if current_semver[0] == latest_semver[0] {
+            if current_semver[1] > latest_semver[1] {
+                return true;
+            } else if current_semver[1] == latest_semver[1] {
+                if current_semver[2] >= latest_semver[2] {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+        
 }
 
 use futures_util::StreamExt;
@@ -343,6 +381,50 @@ pub async fn download_file(
     Ok(())
 }
 
+fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>) -> Result<()> {
+    let file = fs::File::open(arch_path).unwrap();
+
+    let mut archive = zip::ZipArchive::new(file).unwrap();
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).unwrap();
+        let outpath = match file.enclosed_name() {
+            Some(path) => path.to_owned(),
+            None => continue,
+        };
+
+        let comment = file.comment();
+        if !comment.is_empty() {
+            println!("File {i} comment: {comment}");
+        }
+
+        if let Some(ext) = file.enclosed_name().unwrap()
+            .extension()
+            .and_then(|e| e.to_str())
+        {
+            if let Some(out_path) = mappings.get(ext) {
+                log::debug!("압축 해제 대상 경로: {:?}", out_path.to_str().unwrap());
+                let mut out_file_path = PathBuf::from(out_path.to_str().unwrap());
+                out_file_path = out_file_path.join(file.enclosed_name().unwrap());
+
+                // create parent directories if necessary
+                if let Some(parent) = out_file_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+
+                if let Some(p) = outpath.parent() {
+                    if !p.exists() {
+                        fs::create_dir_all(p).unwrap();
+                    }
+                }
+                let mut outfile = fs::File::create(&out_file_path).unwrap();
+                std::io::copy(&mut file, &mut outfile).unwrap();
+            }
+        }
+    }
+    Ok(())
+}
+
 fn extract_files_with_extensions(
     archive_path: &PathBuf,
     mappings: HashMap<&str, &PathBuf>,
@@ -385,29 +467,89 @@ fn extract_files_with_extensions(
 }
 
 // 클라이언트로부터 이벤트를 전송받았을 경우
-pub fn updater_event_handler(tx: Option<Sender<WsEvent>>, rx: Option<Receiver<AppEvent>>) -> bool {
+pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>, rx: Option<Receiver<AppEvent>>) -> bool {
     let mut app_ready = true;
     let mut lib_ready = false;
     while let Some(r) = rx.as_ref() {
         log::info!("UPDATER LOOP!");
         match r.recv() {
-            Ok(AppEvent::CheckAppUpdate(_id)) => {
-                app_ready = true;
-                if app_ready {
+            Ok(AppEvent::CheckAppUpdate(id)) => {
+                let app_config: AppConfig = config.clone().try_deserialize().unwrap();
+                if app_config.auto_app_update {
+                    match super::updater::download_app(tx.clone(), id) {
+                        Ok(_) => {
+                            log::debug!("App Ready!");
+                            app_ready = true;
+                        }
+                        Err(e) => {
+                            log::error!("{}", e);
+                        }
+                    }
+                } else {
+                    // 업데이트를 요청한 유저에게 보낼 update info 생성
+                    let update_info = UpdateInfo {
+                        target_type: "app".to_string(),
+                        current_version: env!("CARGO_PKG_VERSION").to_string(),
+                        target_version: String::from(""),
+                        downloaded: 0,
+                        file_size: 0,
+                        percent: 0.0,
+                        done: true,
+                        updated: false
+                    };
+                    let _ = tx.as_ref().unwrap().send(WsEvent::UpdateInfo(
+                                update_info,
+                                id,
+                            ));
+                    app_ready = true;
+                }
+                
+                if app_ready && lib_ready {
                     break;
                 }
             }
             Ok(AppEvent::CheckLibUpdate(id)) => {
-                match super::updater::download_cvat(tx.clone(), id) {
-                    Ok(_) => {
-                        log::debug!("Lib Ready!");
-                        lib_ready = true;
+                let app_config: AppConfig = config.clone().try_deserialize().unwrap();
+                if app_config.auto_app_update {
+                    match super::updater::download_cvat(tx.clone(), id) {
+                        Ok(_) => {
+                            log::debug!("Lib Ready!");
+                            lib_ready = true;
+                        }
+                        Err(e) => {
+                            log::error!("{}", e);
+                        }
                     }
-                    Err(e) => {
-                        log::error!("{}", e);
+                    if app_ready && lib_ready {
+                        break;
                     }
+                } else {
+                    let lib_path = std::env::current_exe()
+                            .unwrap()
+                            .parent()
+                            .unwrap()
+                            .join("cvAutoTrack"); // 저장할 파일 경로 및 이름
+                    let version = get_local_version(&lib_path);
+                    // 업데이트를 요청한 유저에게 보낼 update info 생성
+                    let update_info = UpdateInfo {
+                        target_type: "lib".to_string(),
+                        current_version: version,
+                        target_version: String::from(""),
+                        downloaded: 0,
+                        file_size: 0,
+                        percent: 0.0,
+                        done: true,
+                        updated: false
+                    };
+                    let _ = tx.as_ref().unwrap().send(WsEvent::UpdateInfo(
+                                update_info,
+                                id,
+                            ));
+
+                    lib_ready = true;
                 }
-                if lib_ready {
+
+                if app_ready && lib_ready {
                     break;
                 }
             }
