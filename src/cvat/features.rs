@@ -138,7 +138,13 @@ pub fn cvat_event_handler(
 fn on_config_changed(config: Config, new_config: Config) {
     let _cvat = get_lib();
     let old_app_config: AppConfig = config.try_deserialize().unwrap();
-    let new_app_config: AppConfig = new_config.try_deserialize().unwrap();
+    let mut new_app_config: AppConfig = new_config.try_deserialize().unwrap();
+    if new_app_config.capture_interval < 100 {
+        new_app_config.capture_interval = 100;
+    }
+    if new_app_config.capture_delay_on_error < 100 {
+        new_app_config.capture_delay_on_error = 100;
+    }
     set_capture_interval(u64::from(new_app_config.capture_interval));
     set_capture_delay_on_error(u64::from(new_app_config.capture_delay_on_error));
     if old_app_config.use_bit_blt_capture_mode != new_app_config.use_bit_blt_capture_mode {
@@ -197,7 +203,12 @@ pub fn get_capture_interval() -> u64 {
 }
 
 pub fn set_capture_interval(val: u64) {
-    *ensure_capture_interval().lock().unwrap() = val;
+    if val > 100 {
+        *ensure_capture_interval().lock().unwrap() = val;
+    } else {
+        *ensure_capture_interval().lock().unwrap() = 100;
+    }
+    
 }
 
 fn ensure_capture_delay_on_error() -> &'static Mutex<u64> {
@@ -209,7 +220,11 @@ pub fn get_capture_delay_on_error() -> u64 {
 }
 
 pub fn set_capture_delay_on_error(val: u64) {
-    *ensure_capture_delay_on_error().lock().unwrap() = val;
+    if val > 100 {
+        *ensure_capture_delay_on_error().lock().unwrap() = val;
+    } else {
+        *ensure_capture_delay_on_error().lock().unwrap() = 100;
+    }
 }
 
 pub fn track_process(sender: Option<Sender<WsEvent>>) -> bool {
