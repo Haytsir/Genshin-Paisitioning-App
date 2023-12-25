@@ -28,8 +28,12 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
         owner, repo
     );
     let response = client.get(&url).header("User-Agent", "reqwest").send()?;
+    log::debug!("{:#?}", &response.status());
+    if response.status().as_u16() > 400 {
+        return Err(format!("Error: Github API 요청에 실패했습니다: {}", &response.text()?).try_into().unwrap());
+    }
     let json: Value = serde_json::from_str(&response.text()?)?;
-
+    
     // 태그 이름 가져오기
     let version = env!("CARGO_PKG_VERSION");
     let release_name = &json["tag_name"].as_str().unwrap_or("")[1..];
@@ -129,7 +133,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
                     std::thread::sleep(Duration::from_millis(1000));
                     let current_exe = std::env::current_exe().unwrap();
                     let exe_name = current_exe.file_name().unwrap();
-                    super::run_shell_execute(&cache_dir.join(exe_name), args);
+                    super::run_shell_execute(&cache_dir.join(exe_name), args, None);
                     terminate_process();
                 }
                 Err(e) => {
@@ -460,7 +464,7 @@ fn extract_files_with_extensions(
 }
 
 // 클라이언트로부터 이벤트를 전송받았을 경우
-pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>, rx: Option<Receiver<AppEvent>>) -> bool {
+pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>, rx: Option<Receiver<AppEvent>>) -> Result<()> {
     let mut app_ready = true;
     let mut lib_ready = false;
     while let Some(r) = rx.as_ref() {
@@ -469,31 +473,32 @@ pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>
             Ok(AppEvent::CheckAppUpdate(id)) => {
                 let app_config: AppConfig = config.clone().try_deserialize().unwrap();
                 if app_config.auto_app_update {
-                    match super::updater::download_app(tx.clone(), id) {
+                    match super::updater::download_app(tx.clone(), id.clone()) {
                         Ok(_) => {
                             log::debug!("App Ready!");
                             app_ready = true;
                         }
                         Err(e) => {
                             log::error!("{}", e);
+                            log::debug!("현재 버전을 계속 사용합니다!");
+                            match send_app_update_info(tx.clone(), id.clone(), None) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    log::error!("{}", e);
+                                }   
+                            }
+                            app_ready = true;
                         }
                     }
                 } else {
-                    // 업데이트를 요청한 유저에게 보낼 update info 생성
-                    let update_info = UpdateInfo {
-                        target_type: "app".to_string(),
-                        current_version: env!("CARGO_PKG_VERSION").to_string(),
-                        target_version: String::from(""),
-                        downloaded: 0,
-                        file_size: 0,
-                        percent: 0.0,
-                        done: true,
-                        updated: false
-                    };
-                    let _ = tx.as_ref().unwrap().send(WsEvent::UpdateInfo(
-                                update_info,
-                                id,
-                            ));
+                    log::debug!("자동 업데이트가 꺼져있습니다.");
+                    log::debug!("현재 버전을 계속 사용합니다!");
+                    match send_app_update_info(tx.clone(), id.clone(), None) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            log::error!("{}", e);
+                        }   
+                    }
                     app_ready = true;
                 }
                 
@@ -504,41 +509,35 @@ pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>
             Ok(AppEvent::CheckLibUpdate(id)) => {
                 let app_config: AppConfig = config.clone().try_deserialize().unwrap();
                 if app_config.auto_app_update {
-                    match super::updater::download_cvat(tx.clone(), id) {
+                    match super::updater::download_cvat(tx.clone(), id.clone()) {
                         Ok(_) => {
                             log::debug!("Lib Ready!");
                             lib_ready = true;
                         }
                         Err(e) => {
                             log::error!("{}", e);
+                            log::debug!("현재 버전을 계속 사용합니다!");
+                            match send_lib_update_info(tx.clone(), id.clone(), None) {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    log::error!("{}", e);
+                                }
+                            }
+                            lib_ready = true;
                         }
                     }
                     if app_ready && lib_ready {
                         break;
                     }
                 } else {
-                    let lib_path = std::env::current_exe()
-                            .unwrap()
-                            .parent()
-                            .unwrap()
-                            .join("cvAutoTrack"); // 저장할 파일 경로 및 이름
-                    let version_string = get_local_version(&lib_path);
-                    let version = version_string.as_str();
-                    // 업데이트를 요청한 유저에게 보낼 update info 생성
-                    let update_info = UpdateInfo {
-                        target_type: "lib".to_string(),
-                        current_version: version.to_string(),
-                        target_version: String::from(""),
-                        downloaded: 0,
-                        file_size: 0,
-                        percent: 0.0,
-                        done: true,
-                        updated: false
-                    };
-                    let _ = tx.as_ref().unwrap().send(WsEvent::UpdateInfo(
-                                update_info,
-                                id,
-                            ));
+                    log::debug!("자동 업데이트가 꺼져있습니다.");
+                    log::debug!("현재 버전을 계속 사용합니다!");
+                    match send_lib_update_info(tx.clone(), id, None) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            log::error!("{}", e);
+                        }
+                    }
 
                     lib_ready = true;
                 }
@@ -552,8 +551,79 @@ pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>
             }
             Err(e) => {
                 log::error!("Unknown: {}", e);
+                return Err(e.try_into().unwrap());
             } //panic!("panic happened"),
         }
     }
-    app_ready && lib_ready
+    match app_ready && lib_ready {
+        true => Ok(()),
+        false => {
+            log::error!("Updater: 업데이트 실패");
+            return Err("Updater: 업데이트 실패".try_into().unwrap());
+        },
+    }
+}
+
+fn send_app_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, update_info: Option<UpdateInfo>) -> Result<()> {
+    // 업데이트를 요청한 유저에게 보낼 update info 생성
+    let info = update_info.unwrap_or(
+    UpdateInfo {
+        target_type: "app".to_string(),
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+        target_version: String::from(""),
+        downloaded: 0,
+        file_size: 0,
+        percent: 0.0,
+        done: true,
+        updated: false
+    });
+    match sender.as_ref().unwrap().send(WsEvent::UpdateInfo(
+        info,
+        requester_id,
+    )) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            log::error!("Error: {}", e);
+            Err(e.try_into().unwrap())
+        }
+    }
+}
+
+fn send_lib_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, update_info: Option<UpdateInfo>) -> Result<()> {
+    let info: UpdateInfo;
+    let lib_path: PathBuf;
+    let version_string: String;
+    if update_info.is_none() {
+        lib_path = std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("cvAutoTrack"); // 저장할 파일 경로 및 이름
+        version_string = get_local_version(&lib_path);
+
+        info = update_info.unwrap_or(UpdateInfo {
+            target_type: "lib".to_string(),
+            current_version: version_string,
+            target_version: String::from(""),
+            downloaded: 0,
+            file_size: 0,
+            percent: 0.0,
+            done: true,
+            updated: false
+        });
+    } else {
+        info = update_info.unwrap();
+    }
+    
+    
+    match sender.as_ref().unwrap().send(WsEvent::UpdateInfo(
+        info,
+        requester_id,
+    )) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            log::error!("Error: {}", e);
+            Err(e.try_into().unwrap())
+        }
+    }
 }

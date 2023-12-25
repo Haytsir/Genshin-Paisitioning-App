@@ -2,13 +2,13 @@
 name = "genshin_paisitioning_app"
 authors = ["Hayts"]
 description = "원신 파이지셔닝 앱"
-version = "1.1.6"
+version = "1.1.7"
 repository = "https://github.com/Haytsir/Genshin-Paisitioning-App"
 edition = "2021"
 build = "src/build.rs"
+publish = false
 
 [dependencies]
-lazy_static = "1.4.0"
 libc = "0.2" # c 라이브러리를 이용하는데 필요
 libloading = "0.8"
 tokio = { version = "1", features = ["full"]} # 웹 서버 구현에 필요 ["macros", "sync", "rt-multi-thread"] 
@@ -28,12 +28,22 @@ reqwest = { version = "0.11", features = ["stream", "blocking", "json"] } # cvat
 zip="*"
 sevenz-rust={version="*", features=["aes256"]}
 directories = "5"
-winapi = {version="*", features = ["securitybaseapi", "wincon", "winuser"]}
-winreg = "*"
 tray-item = {git="https://github.com/fgimian/tray-item-rs.git", branch="switch-to-windows-rs"}
 config = "*"
-sysinfo = "*"
+single-instance = "0.3"
 msgbox = "0.7.0"
+
+[target.'cfg(windows)'.dependencies]
+windows = {version = "*", features = [
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_Console",
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging"
+]}
+winreg = "*"
 
 [build-dependencies]
 winres = "0.1"

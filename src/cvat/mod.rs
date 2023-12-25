@@ -4,11 +4,13 @@
  * 이를 inline module로 둠으로써, cvat::함수명 으로 접근 가능하도록 한다.
  */
 mod features;
-mod implements;
+mod bindings;
 
 pub use self::features::*;
-pub use self::implements::*;
+pub use self::bindings::*;
 
+#[cfg(test)]
+mod test;
 /*
 https://stackoverflow.com/questions/66313302/rust-ffi-include-dynamic-library-in-cross-platform-fashion
 https://stackoverflow.com/questions/66252029/how-to-dynamically-call-a-function-in-a-shared-library

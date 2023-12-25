@@ -2,17 +2,14 @@ use directories::ProjectDirs;
 use std::ffi::CString;
 use std::path::Path;
 use std::process::Command;
-use std::ptr::null_mut;
-use sysinfo::{ProcessExt, System, SystemExt};
-use winapi::um::shellapi::ShellExecuteA;
-use winapi::um::{
-    processthreadsapi::{GetCurrentProcess, OpenProcessToken},
-    securitybaseapi::GetTokenInformation,
-    winnt::{TokenElevation, HANDLE, TOKEN_ELEVATION, TOKEN_QUERY},
+use windows::{
+    core::{s, Result as WinResult, PCSTR}, Win32::Foundation::*, Win32::Security::*, Win32::{System::Memory::*, UI::Shell::ShellExecuteA},
+    Win32::System::Threading::*,
 };
 
+
 // 현재 프로그램이 프로젝트 디렉토리에서 실행중인지 확인한다.
-pub fn check_proj_directory() -> bool {
+pub fn check_proj_directory() -> Result<bool, std::io::Error> {
     // 프로젝트 디렉토리 정의
     if let Some(proj_dirs) = ProjectDirs::from("com", "genshin-paisitioning", "") {
         // target_dir의 내용이 프로젝트 디렉토리의 Root가 된다.
@@ -26,6 +23,7 @@ pub fn check_proj_directory() -> bool {
             Err(e) => {
                 log::debug!("Project Directory: 생성 실패");
                 log::debug!("Error: {}", e);
+                return Err(e);
             }
         }
 
@@ -44,59 +42,85 @@ pub fn check_proj_directory() -> bool {
                 Err(e) => {
                     log::debug!("실행 파일을 Project Directory로 복사 실패");
                     log::debug!("Error: {}", e);
+                    return Err(e);
                 }
             }
-            return false;
+            return Ok(false);
         }
     }
-    true
+    Ok(true)
 }
 
-pub fn check_elevation(target: &Path, args: Vec<&str>) -> bool {
-    unsafe {
-        if is_elevated() {
+pub fn check_elevation(target: &Path, args: Vec<String>) -> bool {
+    if let Ok(elevated) = is_elevated() {
+        if elevated {
             return true;
-        } else {
-            ShellExecuteA(
-                null_mut(),
-                CString::new("runas").unwrap().as_ptr(),
-                CString::new(target.to_str().unwrap()).unwrap().as_ptr(),
-                CString::new(args.join(" ")).unwrap().as_ptr(),
-                null_mut(),
-                1,
-            );
         }
     }
+    run_shell_execute(target, args, Some(true));
     false
 }
 
-pub fn run_shell_execute(target: &Path, args: Vec<String>) {
+pub fn run_shell_execute(target: &Path, args: Vec<String>, with_elevation: Option<bool>) {
+    let path_string = CString::new(target.to_str().unwrap()).unwrap();
+    let path_ptr = CString::as_bytes_with_nul(&path_string);
+    let path = PCSTR::from_raw(&(path_ptr[0]) as &u8 as *const u8);
+    let arg_string = CString::new(args.join(" ")).unwrap();
+    let arg_ptr = CString::as_bytes_with_nul(&arg_string);
+    let arg = PCSTR::from_raw(&(arg_ptr[0]) as &u8 as *const u8);
+    
+    let mut elev = None;
+    if with_elevation.unwrap_or(false) {
+        elev = Some(s!("runas"));
+    }
     unsafe {
         ShellExecuteA(
-            null_mut(),
-            null_mut(),
-            CString::new(target.to_str().unwrap()).unwrap().as_ptr(),
-            CString::new(args.join(" ")).unwrap().as_ptr(),
-            null_mut(),
-            1,
+            None,
+            elev.unwrap(),
+            path,
+            arg,
+            None,
+            windows::Win32::UI::WindowsAndMessaging::SHOW_WINDOW_CMD(0),
         );
     }
 }
 
-pub fn is_elevated() -> bool {
-    let mut h_token: HANDLE = null_mut();
-    let mut token_ele: TOKEN_ELEVATION = TOKEN_ELEVATION { TokenIsElevated: 0 };
-    let mut size: u32 = 0u32;
+pub fn is_elevated() -> WinResult<bool> {
     unsafe {
-        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut h_token);
+        let mut token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)?;
+
+        let mut bytes_required = 0;
+        _ = GetTokenInformation(token, TokenPrivileges, None, 0, &mut bytes_required);
+
+        let buffer = LocalAlloc(LPTR, bytes_required as usize)?;
+
         GetTokenInformation(
-            h_token,
-            TokenElevation,
-            &mut token_ele as *const _ as *mut _,
-            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
-            &mut size,
-        );
-        token_ele.TokenIsElevated == 1
+            token,
+            TokenPrivileges,
+            Some(buffer.0 as *mut _),
+            bytes_required,
+            &mut bytes_required,
+        )?;
+
+        let header = &*(buffer.0 as *const TOKEN_PRIVILEGES);
+
+        let privileges =
+            std::slice::from_raw_parts(header.Privileges.as_ptr(), header.PrivilegeCount as usize);
+        
+        // SE_BACKUP_PRIVILEGE, SE_RESTORE_PRIVILEGE가 없다면 추가한다.
+        let mut required_privileges: Vec<u32> = vec![0x11, 0x12];
+        for privilege in privileges {
+            for (i, p) in required_privileges.iter().enumerate() {
+                if *p == privilege.Luid.LowPart {
+                    required_privileges.remove(i);
+                    break;
+                }
+            }
+        }
+
+        _ = LocalFree(buffer);
+        Ok(required_privileges.len() == 0)
     }
 }
 
@@ -114,25 +138,19 @@ pub fn run_cmd(cmd: &str) {
 }
 
 pub fn is_process_already_running() -> bool {
-    let mut system = System::new_all();
-    system.refresh_all();
-    let mut count = 0;
-    for process in system.processes_by_exact_name("genshin_paisitioning_app.exe") {
-        if process.pid() != <sysinfo::Pid as sysinfo::PidExt>::from_u32(std::process::id()) {
-            count += 1;
-        }
+    log::debug!("Checking if process already running...");
+    let instance = single_instance::SingleInstance::new(env!("CARGO_PKG_NAME")).unwrap();
+    if instance.is_single() {
+        log::debug!("No other instance is running.");
+    } else {
+        log::debug!("Another instance is already running.");
     }
-    if count >= 1 {
-        return true;
-    }
-    false
+    !instance.is_single()
 }
 
 pub fn terminate_process() {
     std::process::exit(0);
 }
-use std::sync::{Once};
-static ONCE_DEBUG: Once = Once::new();
 use log4rs::{
     append::{
         console::{ConsoleAppender, Target},
@@ -143,93 +161,114 @@ use log4rs::{
     filter::threshold::ThresholdFilter,
 };
 pub fn enable_debug() -> Result<(), log::SetLoggerError> {
-    std::env::set_var("RUST_LOG", "debug");
-    std::env::set_var("RUST_BACKTRACE", "1");
+    if std::env::var("RUST_LOG") == Ok("debug".to_string()) {
+        log::debug!("Debug mode is already enabled.");
+        Ok(())
+    } else {
+        std::env::set_var("RUST_LOG", "debug");
+        std::env::set_var("RUST_BACKTRACE", "1");
 
-    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-    // target_dir의 내용이 프로젝트 디렉토리의 Root가 된다.
-    let target_dir = proj_dirs.cache_dir().parent().unwrap().join("logs");
-    
-    // 파일 로거를 생성한다.
-    // 패턴: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
-    let logfile_trace = FileAppender::builder()
-    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
-    .build(target_dir.join("trace.log"))
-    .unwrap();
-
-    let logfile_debug = FileAppender::builder()
-    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
-    .build(target_dir.join("debug.log"))
-    .unwrap();
-
-    let logfile_info = FileAppender::builder()
-    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
-    .build(target_dir.join("info.log"))
-    .unwrap();
-
-    let logfile_warn = FileAppender::builder()
-    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
-    .build(target_dir.join("warn.log"))
-    .unwrap();
-
-    let logfile_error = FileAppender::builder()
-    .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
-    .build(target_dir.join("error.log"))
-    .unwrap();
-
-
-    let config = Config::builder()
-        // Debug 메세지를 StdOut으로 출력하는 로거를 생성한다.
-        .appender(
-            Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Debug)))
-                .build("stdout", Box::new(ConsoleAppender::builder().target(Target::Stdout).build())),
-        )
-
-        // Trace 메세지를 log/trace.log 파일로 출력하는 로거를 생성한다.
-        .appender(
-            Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Trace)))
-                .build("trace", Box::new(logfile_trace))
-        )
-
-        .appender(
-            Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Debug)))
-                .build("debug", Box::new(logfile_debug))
-        )
+        let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
+        // target_dir의 내용이 프로젝트 디렉토리의 Root가 된다.
+        let target_dir = proj_dirs.cache_dir().parent().unwrap().join("logs");
         
-        .appender(
-            Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
-                .build("info", Box::new(logfile_info))
-        )
-
-        .appender(
-            Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Warn)))
-                .build("warn", Box::new(logfile_warn))
-        )
-
-        .appender(
-            Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Error)))
-                .build("error", Box::new(logfile_error))
-        )
-        
-        .build(
-            Root::builder()
-                .appender("stdout")
-                .appender("trace")
-                .appender("debug")
-                .appender("info")
-                .appender("warn")
-                .appender("error")
-                .build(log::LevelFilter::Debug),
-        )
+        // 파일 로거를 생성한다.
+        // 패턴: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
+        let logfile_trace = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+        .build(target_dir.join("trace.log"))
         .unwrap();
 
-    let _handle = log4rs::init_config(config)?;
+        let logfile_debug = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+        .build(target_dir.join("debug.log"))
+        .unwrap();
 
-    Ok(())
+        let logfile_info = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+        .build(target_dir.join("info.log"))
+        .unwrap();
+
+        let logfile_warn = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+        .build(target_dir.join("warn.log"))
+        .unwrap();
+
+        let logfile_error = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {l}:{m}{n}")))
+        .build(target_dir.join("error.log"))
+        .unwrap();
+
+
+        let config: Config;
+        let result = Config::builder()
+            // Debug 메세지를 StdOut으로 출력하는 로거를 생성한다.
+            .appender(
+                Appender::builder()
+                    .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Debug)))
+                    .build("stdout", Box::new(ConsoleAppender::builder().target(Target::Stdout).build())),
+            )
+
+            // Trace 메세지를 log/trace.log 파일로 출력하는 로거를 생성한다.
+            .appender(
+                Appender::builder()
+                    .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Trace)))
+                    .build("trace", Box::new(logfile_trace))
+            )
+
+            .appender(
+                Appender::builder()
+                    .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Debug)))
+                    .build("debug", Box::new(logfile_debug))
+            )
+            
+            .appender(
+                Appender::builder()
+                    .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
+                    .build("info", Box::new(logfile_info))
+            )
+
+            .appender(
+                Appender::builder()
+                    .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Warn)))
+                    .build("warn", Box::new(logfile_warn))
+            )
+
+            .appender(
+                Appender::builder()
+                    .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Error)))
+                    .build("error", Box::new(logfile_error))
+            )
+            
+            .build(
+                Root::builder()
+                    .appender("stdout")
+                    .appender("trace")
+                    .appender("debug")
+                    .appender("info")
+                    .appender("warn")
+                    .appender("error")
+                    .build(log::LevelFilter::Debug),
+            );
+        match result {
+            Ok(conf) => {
+                config = conf;
+            }
+            Err(e) => {
+                panic!("Failed to build log4rs config: {}", e);
+            }
+        }
+
+        let _handle;
+        match log4rs::init_config(config) {
+            Ok(handle) => {
+                _handle = handle;
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Failed to initialize log4rs: {}", e);
+                Err(e)
+            }
+        }
+    }
 }

@@ -6,27 +6,42 @@ mod app;
 mod cvat;
 mod models;
 mod websocket;
+
 use app::{is_process_already_running, updater::updater_event_handler};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use cvat::cvat_event_handler;
 use directories::ProjectDirs;
 use models::{AppEvent, WsEvent};
 use threadpool::ThreadPool;
-
-use log::LevelFilter;
+use log::*;
 
 fn main() {
+    if cfg!(debug_assertions) {
+        match app::enable_debug() {
+            Ok(_) => log::debug!("Debug mode enable."),
+            Err(e) => panic!("Debug mode enable failed. {}", e),
+        }
+        log::debug!("Logging debug messages.");
+    }
     // 프로젝트 디렉토리에서 실행된 것이 아닐 경우,
     // 인스톨 과정을 거친다.
-    if !app::check_proj_directory() {
-        let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-        let target_dir = proj_dirs.cache_dir().parent().unwrap();
-        let current_exe = std::env::current_exe().unwrap();
-        let exe_name = current_exe.file_name().unwrap();
-        if std::env::args().find(|x| x.eq("--update")).is_none() {
-            if !app::check_elevation(&target_dir.join(exe_name), vec!["--install"]) {
-                return;
+    match app::check_proj_directory() {
+        Ok(true) => {}
+        Ok(false) => {
+            let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
+            let target_dir = proj_dirs.cache_dir().parent().unwrap();
+            let current_exe = std::env::current_exe().unwrap();
+            let exe_name = current_exe.file_name().unwrap();
+            if std::env::args().find(|x| x.eq("--update")).is_none() {
+                if !app::check_elevation(&target_dir.join(exe_name), vec!["--install".to_string()]) {
+                    return;
+                }
             }
+        }
+        Err(e) => {
+            log::error!("Error: {}", e);
+            let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), &format!("GPA 설치에 실패했습니다.\n{}", e), msgbox::IconType::None);
+            return;
         }
     }
 
@@ -36,22 +51,37 @@ fn main() {
 
     // 인자를 파싱한다.
     for a in std::env::args() {
+        log::debug!("Argument: {}", a);
         if a.starts_with("genshin-paisitioning://") {
+            log::debug!("the program launched with scheme: genshin-paisitioning://");
             let parameters = &a[a.find("://").unwrap() + 3..];
             let param_vec: Vec<&str> = parameters.split('/').collect();
             ready(param_vec);
         } else {
             if a.eq("--debug") || a.eq("-d") {
-                app::enable_debug();
+                match app::enable_debug() {
+                    Ok(_) => log::debug!("Debug mode enable."),
+                    Err(e) => panic!("Debug mode enable failed. {}", e),
+                }
                 log::debug!("Logging debug messages.");
             }
             if a.eq("--install") || a.eq("-i") {
                 log::debug!("Install parameter found.");
-                app::installer::install();
+                match app::installer::install() {
+                    Ok(_) => {},
+                    Err(e) => {
+                        log::error!("Error: {}", e);
+                    }
+                }
                 return;
             } else if a.eq("--uninstall") || a.eq("-u") {
                 log::debug!("Uninstall parameter found.");
-                app::installer::uninstall();
+                match app::installer::uninstall() {
+                    Ok(_) => {},
+                    Err(e) => {
+                        log::error!("Error: {}", e);
+                    }
+                }
                 return;
             }
         }
@@ -59,38 +89,60 @@ fn main() {
 }
 
 fn ready(param: Vec<&str>) {
+    log::debug!("Argument: {:?}", param);
     let (cvat_sender, cvat_receiver): (Sender<AppEvent>, Receiver<AppEvent>) = unbounded();
     let (ws_sender, ws_receiver): (Sender<WsEvent>, Receiver<WsEvent>) = unbounded();
     let pool: ThreadPool = ThreadPool::new(5);
 
-    let config = app::config::init_config();
+    let config_result = app::config::init_config();
+    let config: config::Config;
+    match config_result {
+        Ok(conf) => {
+            config = conf;
+        }
+        Err(e) => {
+            log::error!("Config: 로드 실패");
+            log::error!("Error: {}", e);
+            return;
+        }
+    }
 
     if param.contains(&"debug") {
-        app::enable_debug();
+        match app::enable_debug() {
+            Ok(_) => log::debug!("Debug mode enable."),
+            Err(e) => panic!("Debug mode enable failed. {}", e),
+        }
     }
     if param.contains(&"launch") {
+        log::debug!("Launch parameter found.");
         let ws_handler_sender = cvat_sender;
         let ws_handler_receiver = ws_receiver;
 
         // Ws 시작
         pool.execute(move || {
+            log::debug!("start ws server");
             websocket::serve(ws_handler_sender, ws_handler_receiver);
         });
 
         // Ws과 Cvat Library의 연동 핸들러 시작
         pool.execute(move || {
+            log::debug!("start ws handler");
             let updater_handler_sender = ws_sender.clone();
             let updater_handler_receiver = cvat_receiver.clone();
-            let ready =
-                updater_event_handler(config.clone(), Some(updater_handler_sender), Some(updater_handler_receiver));
-            if ready {
-                let cvat_handler_sender = ws_sender.clone();
-                let cvat_handler_receiver = cvat_receiver.clone();
-                cvat_event_handler(
-                    config,
-                    Some(cvat_handler_sender),
-                    Some(cvat_handler_receiver),
-                );
+            match updater_event_handler(config.clone(), Some(updater_handler_sender), Some(updater_handler_receiver)) {
+                Ok(_) => {
+                    let cvat_handler_sender = ws_sender.clone();
+                    let cvat_handler_receiver = cvat_receiver.clone();
+                    cvat_event_handler(
+                        config.clone(),
+                        Some(cvat_handler_sender),
+                        Some(cvat_handler_receiver),
+                    );
+                },
+                Err(e) => {
+                    log::error!("Error: {}", e);
+                    panic!("Updater event handler failed. {}", e);
+                }                
             }
         });
 

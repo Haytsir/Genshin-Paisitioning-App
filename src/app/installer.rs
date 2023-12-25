@@ -8,45 +8,82 @@ use crate::app::run_cmd;
 
 use super::check_elevation;
 
-pub fn install() {
+pub fn install() -> Result<(), std::io::Error>{
     let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
     let target_dir = proj_dirs.cache_dir().parent().unwrap();
     let current_exe = std::env::current_exe().unwrap();
     let exe_name = current_exe.file_name().unwrap();
-    if check_elevation(&target_dir.join(exe_name), vec!["--install"]) {
+    if check_elevation(&target_dir.join(exe_name), vec!["--install".to_string()]) {
         log::debug!("Installing...");
         let exe_path = &target_dir.join(exe_name);
-        register_url_scheme(exe_path);
-        register_uninstall_item(exe_path);
-        create_config_file_if_not_exist(&target_dir.join("config.json"));
+        let result = register_url_scheme(exe_path);
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Error: {}", e);
+                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치에 실패했습니다.", msgbox::IconType::None);
+                return Err(e.into());
+            }
+        }
+        let result = register_uninstall_item(exe_path);
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Error: {}", e);
+                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치에 실패했습니다.", msgbox::IconType::None);
+                return Err(e.into());
+            }
+        }
+        let result = create_config_file_if_not_exist(&target_dir.join("config.json"));
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Error: {}", e);
+                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치에 실패했습니다.", msgbox::IconType::None);
+                return Err(e.into());
+            }
+        }
         let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 완료했습니다.", msgbox::IconType::None);
+    } else {
+        let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 취소했습니다.\n관리자 권한이 필요합니다.", msgbox::IconType::None);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "관리자 권한이 필요합니다."));
     }
+    Ok(())
 }
 
-pub fn update() {
+pub fn uninstall() -> Result<(), std::io::Error> {
     let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
     let target_dir = proj_dirs.cache_dir().parent().unwrap();
     let current_exe = std::env::current_exe().unwrap();
     let exe_name = current_exe.file_name().unwrap();
-    if check_elevation(&target_dir.join(exe_name), vec!["--install"]) {
-        log::debug!("Installing...");
-        let exe_path = &target_dir.join(exe_name);
-        register_url_scheme(exe_path);
-        register_uninstall_item(exe_path);
-        create_config_file_if_not_exist(&target_dir.join("config.json"));
-        let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 완료했습니다.", msgbox::IconType::None);
-    }
-}
-
-pub fn uninstall() {
-    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-    let target_dir = proj_dirs.cache_dir().parent().unwrap();
-    let current_exe = std::env::current_exe().unwrap();
-    let exe_name = current_exe.file_name().unwrap();
-    if check_elevation(&target_dir.join(exe_name), vec!["--uninstall"]) {
+    if check_elevation(&target_dir.join(exe_name), vec!["--uninstall".to_string()]) {
         log::debug!("Uninstalling...");
-        remove_url_scheme();
-        remove_uninstall_item();
+        let result = remove_url_scheme();
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Error: {}", e);
+                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거에 실패했습니다.", msgbox::IconType::None);
+                return Err(e.into());
+            }
+        }
+        let result = remove_uninstall_item();
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Error: {}", e);
+                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거에 실패했습니다.", msgbox::IconType::None);
+                return Err(e.into());
+            }
+        }
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Error: {}", e);
+                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거에 실패했습니다.", msgbox::IconType::None);
+                return Err(e.into());
+            }
+        }
         run_cmd(
             format!(
                 "ping localhost -n 3 > nul & del /F /Q /S {}",
@@ -54,10 +91,15 @@ pub fn uninstall() {
             )
             .as_str(),
         );
+    } else {
+        let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거를 취소했습니다.\n관리자 권한이 필요합니다.", msgbox::IconType::None);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "관리자 권한이 필요합니다."));
     }
+    Ok(())
 }
 
-fn register_url_scheme(install_path: &Path) -> bool {
+fn register_url_scheme(install_path: &Path) -> Result<(), std::io::Error> {
+    log::debug!("Registering URL Scheme...");
     // register protocol using registry
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let mut path = Path::new("Software\\Classes\\genshin-paisitioning");
@@ -71,7 +113,7 @@ fn register_url_scheme(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -79,7 +121,7 @@ fn register_url_scheme(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -94,7 +136,7 @@ fn register_url_scheme(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -108,7 +150,7 @@ fn register_url_scheme(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -125,14 +167,15 @@ fn register_url_scheme(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
-    true
+    Ok(())
 }
 
-fn register_uninstall_item(install_path: &Path) -> bool {
+fn register_uninstall_item(install_path: &Path) -> Result<(), std::io::Error> {
+    log::debug!("Registering uninstall item...");
     // write uninstall info to registry
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let path =
@@ -146,7 +189,7 @@ fn register_uninstall_item(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -157,7 +200,7 @@ fn register_uninstall_item(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -165,7 +208,7 @@ fn register_uninstall_item(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -173,7 +216,7 @@ fn register_uninstall_item(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -181,7 +224,7 @@ fn register_uninstall_item(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -189,7 +232,7 @@ fn register_uninstall_item(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -197,7 +240,7 @@ fn register_uninstall_item(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
 
@@ -208,37 +251,21 @@ fn register_uninstall_item(install_path: &Path) -> bool {
     match result {
         Ok(_) => {}
         Err(_) => {
-            return false;
+            return result;
         }
     }
-    true
+    Ok(())
 }
 
-fn remove_url_scheme() -> bool {
+fn remove_url_scheme() -> Result<(), std::io::Error> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let path = Path::new("Software\\Classes\\genshin-paisitioning");
-    let result = hkcu.delete_subkey_all(path);
-    match result {
-        Ok(_) => {
-            true
-        }
-        Err(_) => {
-            false
-        }
-    }
+    hkcu.delete_subkey_all(path)
 }
 
-fn remove_uninstall_item() -> bool {
+fn remove_uninstall_item() -> Result<(), std::io::Error> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let path =
         Path::new("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\genshin-paisitioning");
-    let result = hklm.delete_subkey_all(path);
-    match result {
-        Ok(_) => {
-            true
-        }
-        Err(_) => {
-            false
-        }
-    }
+    hklm.delete_subkey_all(path)
 }
