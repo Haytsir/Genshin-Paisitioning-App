@@ -21,52 +21,46 @@ static CAPTURE_INTERVAL: OnceCell<Mutex<u64>> = OnceCell::new();
 static CAPTURE_DELAY_ON_ERROR: OnceCell<Mutex<u64>> = OnceCell::new();
 
 pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> bool {
-    let cvat = unsafe{ cvAutoTrack::new("./cvAutoTrack/cvAutoTrack.dll") }.expect ( "ERROR loading cvAutoTrack.dll" );
+    use crate::cvat::dylib as cvat;
     let mut cs:[i8; 256] = [0; 256];
-        let c_buf: *mut i8 = cs.as_mut_ptr();
-        unsafe {
-            cvat.GetCompileVersion(c_buf, 256);
-        }
-        let mut c_str: &CStr = unsafe { CStr::from_ptr(c_buf) };
-        let mut str_slice: &str = c_str.to_str().unwrap(); // .to_owned() if want to own the str.
-        log::info!("Compile Version: {}", str_slice);
+    let c_buf: *mut i8 = cs.as_mut_ptr();
+    unsafe {
+        cvat::GetCompileVersion(c_buf, 256);
+    }
+    let mut c_str: &CStr = unsafe { CStr::from_ptr(c_buf) };
+    let mut str_slice: &str = c_str.to_str().unwrap(); // .to_owned() if want to own the str.
+    log::info!("Compile Version: {}", str_slice);
 
-        unsafe {
-            cvat.GetCompileTime(c_buf, 256);
-        }
-        c_str = unsafe { CStr::from_ptr(c_buf) };
-        str_slice = c_str.to_str().unwrap(); // .to_owned() if want to own the str.
-        log::info!("Compile Time: {}", str_slice);
-        
-        for _ in 0..10 { 
-            let _ = track_process(&cvat, sender.clone());
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-        };
-        std::thread::sleep(std::time::Duration::from_millis(5000));
+    unsafe {
+        cvat::GetCompileTime(c_buf, 256);
+    }
+    c_str = unsafe { CStr::from_ptr(c_buf) };
+    str_slice = c_str.to_str().unwrap(); // .to_owned() if want to own the str.
+    log::info!("Compile Time: {}", str_slice);
     
     log::debug!("start_track_thead: start");
     if get_is_tracking() {
         log::debug!("start_track_thead again?");
         return true;
     }
-    if unsafe { cvat.init() } {
+    if unsafe { cvat::init() } {
         log::debug!("start_track_thead init done");
         set_is_tracking(true);
         if use_bit_blt {
-            // cvat.set_use_bitblt_capture_mode();
+            // cvat::set_use_bitblt_capture_mode();
         } else {
-            // cvat.set_use_dx11_capture_mode();
+            // cvat::set_use_dx11_capture_mode();
         }
-        //unsafe { cvat.SetDisableFileLog() };
+        //unsafe { cvat::SetDisableFileLog() };
         (*ensure_thread_pool())
             .lock()
             .unwrap()
             .execute(move || loop {
                 if !get_is_tracking() {
-                    unsafe { cvat.uninit() };
+                    unsafe { cvat::uninit() };
                     break;
                 }
-                match track_process(&cvat, sender.clone()) {
+                match track_process(sender.clone()) {
                     Ok(_) => {
                         thread::sleep(Duration::from_millis(get_capture_interval()));
                     }
@@ -81,10 +75,11 @@ pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> 
 
 // TODO: sender를 통해 &cvAutoTrack 를 전송할 수 있는가?
 pub fn stop_track_thread(cvat: &cvAutoTrack /*sender: Option<Sender<WsEvent>>*/) -> bool {
+    use super::bindings::cvAutoTrack_dylib as cvat;
     if !get_is_tracking() {
         return true;
     }
-    if unsafe { cvat.uninit() } {
+    if unsafe { cvat::uninit() } {
         drop((*ensure_thread_pool()).lock().unwrap());
         set_is_tracking(false);
         return true;
@@ -166,9 +161,9 @@ fn on_config_changed(config: Config, new_config: Config) {
     set_capture_delay_on_error(u64::from(new_app_config.capture_delay_on_error));
     if old_app_config.use_bit_blt_capture_mode != new_app_config.use_bit_blt_capture_mode {
         if new_app_config.use_bit_blt_capture_mode {
-            // cvat.set_use_bitblt_capture_mode();
+            // cvat::set_use_bitblt_capture_mode();
         } else {
-            // cvat.set_use_dx11_capture_mode();
+            // cvat::set_use_dx11_capture_mode();
         }
     }
     let _ = crate::app::config::save_config(&new_app_config);
@@ -223,10 +218,9 @@ pub fn set_capture_delay_on_error(val: u64) {
     }
 }
 
-pub fn track_process(cvat: &cvAutoTrack, sender: Option<Sender<WsEvent>>) -> Result<(), Box<dyn Error>> {
+pub fn track_process(sender: Option<Sender<WsEvent>>) -> Result<(), Box<dyn Error>> {
     let mut trackdata = TrackData::default();
     match track(
-        &cvat,
         &mut trackdata.x,
         &mut trackdata.y,
         &mut trackdata.a,
@@ -247,25 +241,24 @@ pub fn track_process(cvat: &cvAutoTrack, sender: Option<Sender<WsEvent>>) -> Res
 }
 
 pub fn track(
-    cvat: &cvAutoTrack,
     x: &mut c_double,
     y: &mut c_double,
     a: &mut c_double,
     r: &mut c_double,
     m: &mut c_int,
 ) -> Result<(), Box<dyn Error>> {
-    
-    if unsafe {!cvat.GetTransformOfMap(x, y, a, m)} {        
+    use super::bindings::cvAutoTrack_dylib as cvat;
+    if unsafe {!cvat::GetTransformOfMap(x, y, a, m)} {        
         let mut cs:[i8; 256] = [0; 256];
         let c_buf: *mut i8 = cs.as_mut_ptr();
-        unsafe { cvat.GetLastErrJson(c_buf, 256) };
+        unsafe { cvat::GetLastErrJson(c_buf, 256) };
         let c_str: &CStr = unsafe { CStr::from_ptr(c_buf) };
         return Err(c_str.to_str().unwrap().into());
     }
-    if unsafe {!cvat.GetRotation(r)} {
+    if unsafe {!cvat::GetRotation(r)} {
         let mut cs:[i8; 256] = [0; 256];
         let c_buf: *mut i8 = cs.as_mut_ptr();
-        unsafe { cvat.GetLastErrJson(c_buf, 256) };
+        unsafe { cvat::GetLastErrJson(c_buf, 256) };
         let c_str: &CStr = unsafe { CStr::from_ptr(c_buf) };
         return Err(c_str.to_str().unwrap().into());
     }

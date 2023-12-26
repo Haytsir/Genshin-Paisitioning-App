@@ -3,6 +3,10 @@ use std::path::Path;
 extern crate winres;
 
 fn main() {
+    let lib_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("lib\\bin");
+    println!("{}", lib_path.display());
+    println!("cargo:rustc-link-search=all={}", lib_path.display());
+    println!("cargo:rustc-link-search=all=cvAutoTrack");
     if cfg!(target_os = "windows") {
         let mut res = winres::WindowsResource::new();
         let major_version: u64 = env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap();
