@@ -22,27 +22,6 @@ static CAPTURE_DELAY_ON_ERROR: OnceCell<Mutex<u64>> = OnceCell::new();
 
 pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> bool {
     let cvat = unsafe{ cvAutoTrack::new("./cvAutoTrack/cvAutoTrack.dll") }.expect ( "ERROR loading cvAutoTrack.dll" );
-    let mut cs:[i8; 256] = [0; 256];
-        let c_buf: *mut i8 = cs.as_mut_ptr();
-        unsafe {
-            cvat.GetCompileVersion(c_buf, 256);
-        }
-        let mut c_str: &CStr = unsafe { CStr::from_ptr(c_buf) };
-        let mut str_slice: &str = c_str.to_str().unwrap(); // .to_owned() if want to own the str.
-        log::info!("Compile Version: {}", str_slice);
-
-        unsafe {
-            cvat.GetCompileTime(c_buf, 256);
-        }
-        c_str = unsafe { CStr::from_ptr(c_buf) };
-        str_slice = c_str.to_str().unwrap(); // .to_owned() if want to own the str.
-        log::info!("Compile Time: {}", str_slice);
-        
-        for _ in 0..10 { 
-            let _ = track_process(&cvat, sender.clone());
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-        };
-        std::thread::sleep(std::time::Duration::from_millis(5000));
     
     log::debug!("start_track_thead: start");
     if get_is_tracking() {
