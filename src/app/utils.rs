@@ -10,7 +10,7 @@ use windows::{
                     Threading::*
     },
 };
-use log::*;
+
 
 pub fn set_lib_directory() -> Result<(), std::io::Error> {
     let mut d: PathBuf;
@@ -48,12 +48,6 @@ pub fn set_lib_directory() -> Result<(), std::io::Error> {
             return Err(e.into());
         }
     }
-
-    let mut dll_dir_vec = d.to_str().expect("Unexpected directory name").encode_utf16().collect::<Vec<_>>();
-    dll_dir_vec.push(0);
-    let dll_dir = dll_dir_vec.as_ptr() as *mut u16;
-    
-    unsafe { let _ = SetDllDirectoryW( windows::core::PCWSTR::from_raw(dll_dir) ); };
 }
 
 

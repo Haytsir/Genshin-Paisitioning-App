@@ -46,7 +46,7 @@ pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> 
         } else {
             // cvat.set_use_dx11_capture_mode();
         }
-        //unsafe { cvat.SetDisableFileLog() };
+        // unsafe { cvat.SetDisableFileLog() };
         (*ensure_thread_pool())
             .lock()
             .unwrap()
