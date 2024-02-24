@@ -602,7 +602,7 @@ fn send_lib_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, u
         version_string = get_local_version(&lib_path);
 
         info = update_info.unwrap_or(UpdateInfo {
-            target_type: "lib".to_string(),
+            target_type: "cvat".to_string(),
             current_version: version_string,
             target_version: String::from(""),
             downloaded: 0,

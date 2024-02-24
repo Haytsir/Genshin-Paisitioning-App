@@ -1,11 +1,37 @@
 use directories::ProjectDirs;
-use std::ffi::CString;
+use std::{ffi::CString, path::PathBuf};
 use std::path::Path;
 use std::process::Command;
 use windows::{
     core::{s, Result as WinResult, PCSTR}, Win32::Foundation::*, Win32::Security::*, Win32::{System::Memory::*, UI::Shell::ShellExecuteA},
-    Win32::System::Threading::*,
+    Win32::System::{
+                    LibraryLoader::SetDllDirectoryW,
+                    Threading::*
+    },
 };
+pub fn set_lib_directory() {
+    let mut d: PathBuf;
+
+    d = PathBuf::from(std::env::current_exe().unwrap());
+    d.pop();
+    d.push("cvAutoTrack");
+
+    println!("{}", d.display());
+    
+    #[cfg(debug_assertions)]
+    {
+        d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("lib\\bin");
+    }
+
+    println!("{}", d.display());
+
+    let mut dll_dir_vec = d.to_str().expect("Unexpected directory name").encode_utf16().collect::<Vec<_>>();
+    dll_dir_vec.push(0);
+    let dll_dir = dll_dir_vec.as_ptr() as *mut u16;
+    
+    unsafe { let _ = SetDllDirectoryW( windows::core::PCWSTR::from_raw(dll_dir) ); };
+}
 
 
 // 현재 프로그램이 프로젝트 디렉토리에서 실행중인지 확인한다.
