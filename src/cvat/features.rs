@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use super::bindings::cvAutoTrack;
 
+use crate::app::set_lib_directory;
 use crate::models::{AppConfig, AppEvent, TrackData, WsEvent};
 use libc::{c_double, c_int};
 use std::ffi::CStr;
@@ -21,7 +22,16 @@ static CAPTURE_INTERVAL: OnceCell<Mutex<u64>> = OnceCell::new();
 static CAPTURE_DELAY_ON_ERROR: OnceCell<Mutex<u64>> = OnceCell::new();
 
 pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> bool {
-    let cvat = unsafe{ cvAutoTrack::new("cvAutoTrack.dll") }.expect ( "ERROR loading cvAutoTrack.dll" );
+    let cvat: cvAutoTrack;
+
+    match set_lib_directory() {
+        Ok(_) => {
+            cvat = unsafe{ cvAutoTrack::new("cvAutoTrack.dll") }.expect ( "ERROR loading cvAutoTrack.dll" );
+        }
+        Err(_e) => {
+            cvat = unsafe{ cvAutoTrack::new("./cvAutoTrack/cvAutoTrack.dll") }.expect ( "ERROR loading cvAutoTrack.dll" );
+        }
+    }
     
     log::debug!("start_track_thead: start");
     if get_is_tracking() {

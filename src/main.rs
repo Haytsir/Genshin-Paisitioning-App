@@ -15,8 +15,6 @@ use models::{AppEvent, WsEvent};
 use threadpool::ThreadPool;
 use log::*;
 
-use crate::app::set_lib_directory;
-
 fn main() {
     #[cfg(debug_assertions)]
     {
@@ -124,8 +122,6 @@ fn ready(param: Vec<&str>) {
         log::debug!("Launch parameter found.");
         let ws_handler_sender = cvat_sender;
         let ws_handler_receiver = ws_receiver;
-
-        set_lib_directory();
 
         // Ws 시작
         pool.execute(move || {
