@@ -49,7 +49,7 @@ pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> 
         log::debug!("start_track_thead again?");
         return true;
     }
-    if unsafe { cvat.init() } {
+    if unsafe { cvat.InitResource() } {
         log::debug!("start_track_thead init done");
         set_is_tracking(true);
         if use_bit_blt {
@@ -63,7 +63,7 @@ pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> 
             .unwrap()
             .execute(move || loop {
                 if !get_is_tracking() {
-                    unsafe { cvat.uninit() };
+                    unsafe { cvat.UnInitResource() };
                     break;
                 }
                 match track_process(&cvat, sender.clone()) {
@@ -84,7 +84,7 @@ pub fn stop_track_thread(cvat: &cvAutoTrack /*sender: Option<Sender<WsEvent>>*/)
     if !get_is_tracking() {
         return true;
     }
-    if unsafe { cvat.uninit() } {
+    if unsafe { cvat.UnInitResource() } {
         drop((*ensure_thread_pool()).lock().unwrap());
         set_is_tracking(false);
         return true;

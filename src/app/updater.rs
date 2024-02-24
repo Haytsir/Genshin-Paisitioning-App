@@ -28,7 +28,6 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
         owner, repo
     );
     let response = client.get(&url).header("User-Agent", "reqwest").send()?;
-    log::debug!("{:#?}", &response.status());
     if response.status().as_u16() > 400 {
         return Err(format!("Error: Github API 요청에 실패했습니다: {}", &response.text()?).try_into().unwrap());
     }

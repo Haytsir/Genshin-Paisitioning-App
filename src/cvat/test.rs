@@ -1,15 +1,23 @@
 #[cfg(test)]
 mod lib_tests {
-    use std::{path::PathBuf, ffi::{CStr, c_double, c_int}, error::Error};
+    use std::{error::Error, ffi::{c_double, c_int, CStr}, os::windows::ffi::{OsStrExt, OsStringExt}, path::PathBuf};
     use crate::{cvat::cvAutoTrack, models};
+    use windows::Win32::System::LibraryLoader::SetDllDirectoryW;
 
     #[test]
     fn libload() {
         let mut d: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("lib/bin/cvAutoTrack.dll");
-        println!("{}", d.display());
+        d.push("lib\\bin");
+
+        let mut dll_dir_vec = d.to_str().expect("Unexpected directory name").encode_utf16().collect::<Vec<_>>();
+        dll_dir_vec.push(0);
+        let dll_dir = dll_dir_vec.as_ptr() as *mut u16;
         
-        let cvat = unsafe {cvAutoTrack::new(d.as_os_str()).expect("cvAutoTrack.dll load failed.")};
+        unsafe { let _ = SetDllDirectoryW( windows::core::PCWSTR::from_raw(dll_dir) ); };
+
+        println!("{}", d.display());
+        let cvat = unsafe { cvAutoTrack::new("cvAutoTrack.dll").expect("cvAutoTrack.dll load failed.") };
+
 
         let mut cs:[i8; 256] = [0; 256];
         let c_buf: *mut i8 = cs.as_mut_ptr();
@@ -26,6 +34,18 @@ mod lib_tests {
         c_str = unsafe { CStr::from_ptr(c_buf) };
         str_slice = c_str.to_str().unwrap(); // .to_owned() if want to own the str.
         println!("Compile Time: {}", str_slice);
+
+        unsafe{cvat.InitResource()};
+        if unsafe{cvat.DebugLoadMapImagePath("map.jpg".as_ptr() as *const i8)} {
+            println!("DebugLoadMapImagePath: OK");
+        } else {
+            println!("DebugLoadMapImagePath: NG");
+            let mut cs:[i8; 256] = [0; 256];
+            let c_buf: *mut i8 = cs.as_mut_ptr();
+            unsafe { cvat.GetLastErrJson(c_buf, 256) };
+            let c_str: &CStr = unsafe { CStr::from_ptr(c_buf) };
+            println!("{}", c_str.to_str().unwrap());
+        }
         
         for _ in 0..10 { 
             let _ = track_process(&cvat);
@@ -33,7 +53,7 @@ mod lib_tests {
         };
         std::thread::sleep(std::time::Duration::from_millis(5000));
         drop(cvat);
-        //assert_eq!(2 + 2, 4);
+        
     }
 
     pub fn track_process(cvat: &cvAutoTrack) -> Result<(), Box<dyn Error>> {

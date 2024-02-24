@@ -9,39 +9,162 @@ extern crate libloading;
 #[derive(Debug)]
 pub struct cvAutoTrack {
     __library: ::libloading::Library,
-    pub verison: Result<
-        unsafe extern "C" fn(versionBuff: *mut ::std::os::raw::c_char) -> bool,
+    pub DebugLoadMapImagePath: Result<unsafe extern "C" fn(path: *const ::std::os::raw::c_char) -> bool, ::libloading::Error>,
+    pub InitResource: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub UnInitResource: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub StartServer: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub StopServer: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub SetServerInterval: Result<
+        unsafe extern "C" fn(interval_ms: ::std::os::raw::c_int) -> bool,
         ::libloading::Error,
     >,
-    pub init: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
-    pub uninit: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
-    pub startServe: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
-    pub stopServe: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub SetServerCallback: Result<
+        unsafe extern "C" fn(
+            callback: ::std::option::Option<
+                unsafe extern "C" fn(
+                    json_buff: *const ::std::os::raw::c_char,
+                    buff_size: ::std::os::raw::c_int,
+                ),
+            >,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetDisableFileLog: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub SetEnableFileLog: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub SetLogFilePath: Result<
+        unsafe extern "C" fn(path: *const ::std::os::raw::c_char) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetLogFileName: Result<
+        unsafe extern "C" fn(name: *const ::std::os::raw::c_char) -> bool,
+        ::libloading::Error,
+    >,
     pub SetUseBitbltCaptureMode: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
-    pub SetUseDx11CaptureMode: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
-    pub SetHandle: Result<
+    pub SetUseGraphicsCaptureMode: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub SetUseDwmCaptureMode: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub SetUseLocalPictureMode: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub SetUseLocalVideoMode: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub SetCaptureHandle: Result<
         unsafe extern "C" fn(handle: ::std::os::raw::c_longlong) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetCaptureHandleCallback: Result<
+        unsafe extern "C" fn(
+            callback: ::std::option::Option<unsafe extern "C" fn() -> ::std::os::raw::c_longlong>,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetScreenSourceCallback: Result<
+        unsafe extern "C" fn(
+            callback: ::std::option::Option<
+                unsafe extern "C" fn(
+                    image_encode_data: *const ::std::os::raw::c_char,
+                    image_data_size: *mut ::std::os::raw::c_int,
+                ),
+            >,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetScreenSourceCallbackEx: Result<
+        unsafe extern "C" fn(
+            callback: ::std::option::Option<
+                unsafe extern "C" fn(
+                    image_data: *const ::std::os::raw::c_char,
+                    image_width: *mut ::std::os::raw::c_int,
+                    image_height: *mut ::std::os::raw::c_int,
+                    image_channels: *mut ::std::os::raw::c_int,
+                ),
+            >,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetScreenSourceImage: Result<
+        unsafe extern "C" fn(
+            image_encode_data: *const ::std::os::raw::c_char,
+            image_data_size: ::std::os::raw::c_int,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetScreenSourceImageEx: Result<
+        unsafe extern "C" fn(
+            image_data: *const ::std::os::raw::c_char,
+            image_width: ::std::os::raw::c_int,
+            image_height: ::std::os::raw::c_int,
+            image_channels: ::std::os::raw::c_int,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetScreenClientRectCallback: Result<
+        unsafe extern "C" fn(
+            callback: ::std::option::Option<
+                unsafe extern "C" fn(
+                    x: *mut ::std::os::raw::c_int,
+                    y: *mut ::std::os::raw::c_int,
+                    width: *mut ::std::os::raw::c_int,
+                    height: *mut ::std::os::raw::c_int,
+                ),
+            >,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetTrackCachePath: Result<
+        unsafe extern "C" fn(path: *const ::std::os::raw::c_char) -> bool,
+        ::libloading::Error,
+    >,
+    pub SetTrackCacheName: Result<
+        unsafe extern "C" fn(name: *const ::std::os::raw::c_char) -> bool,
         ::libloading::Error,
     >,
     pub SetWorldCenter: Result<unsafe extern "C" fn(x: f64, y: f64) -> bool, ::libloading::Error>,
     pub SetWorldScale: Result<unsafe extern "C" fn(scale: f64) -> bool, ::libloading::Error>,
     pub ImportMapBlock: Result<
         unsafe extern "C" fn(
-            id_x: ::std::os::raw::c_int,
-            id_y: ::std::os::raw::c_int,
-            image_data: *const ::std::os::raw::c_char,
+            uuid: ::std::os::raw::c_int,
+            image_encode_data: *const ::std::os::raw::c_char,
             image_data_size: ::std::os::raw::c_int,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub ImportMapBlockData: Result<
+        unsafe extern "C" fn(
+            uuid: ::std::os::raw::c_int,
+            image_data: *const ::std::os::raw::c_char,
             image_width: ::std::os::raw::c_int,
             image_height: ::std::os::raw::c_int,
+            image_channels: ::std::os::raw::c_int,
         ) -> bool,
         ::libloading::Error,
     >,
     pub ImportMapBlockCenter: Result<
-        unsafe extern "C" fn(x: ::std::os::raw::c_int, y: ::std::os::raw::c_int) -> bool,
+        unsafe extern "C" fn(
+            uuid: ::std::os::raw::c_int,
+            x: ::std::os::raw::c_int,
+            y: ::std::os::raw::c_int,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub ImportMapBlockRelativeCenter: Result<
+        unsafe extern "C" fn(
+            uuid: ::std::os::raw::c_int,
+            parent_uuid: ::std::os::raw::c_int,
+            x: ::std::os::raw::c_int,
+            y: ::std::os::raw::c_int,
+        ) -> bool,
         ::libloading::Error,
     >,
     pub ImportMapBlockCenterScale: Result<
         unsafe extern "C" fn(
+            uuid: ::std::os::raw::c_int,
+            x: ::std::os::raw::c_int,
+            y: ::std::os::raw::c_int,
+            scale: f64,
+        ) -> bool,
+        ::libloading::Error,
+    >,
+    pub ImportMapBlockRelativeCenterScale: Result<
+        unsafe extern "C" fn(
+            uuid: ::std::os::raw::c_int,
+            parent_uuid: ::std::os::raw::c_int,
             x: ::std::os::raw::c_int,
             y: ::std::os::raw::c_int,
             scale: f64,
@@ -68,7 +191,10 @@ pub struct cvAutoTrack {
         ::libloading::Error,
     >,
     pub GetStarJson: Result<
-        unsafe extern "C" fn(jsonBuff: *mut ::std::os::raw::c_char) -> bool,
+        unsafe extern "C" fn(
+            json_buff: *mut ::std::os::raw::c_char,
+            buff_size: ::std::os::raw::c_int,
+        ) -> bool,
         ::libloading::Error,
     >,
     pub GetUID:
@@ -86,7 +212,7 @@ pub struct cvAutoTrack {
     >,
     pub GetInfoLoadPicture: Result<
         unsafe extern "C" fn(
-            path: *mut ::std::os::raw::c_char,
+            path: *const ::std::os::raw::c_char,
             uid: *mut ::std::os::raw::c_int,
             x: *mut f64,
             y: *mut f64,
@@ -96,17 +222,14 @@ pub struct cvAutoTrack {
     >,
     pub GetInfoLoadVideo: Result<
         unsafe extern "C" fn(
-            path: *mut ::std::os::raw::c_char,
-            pathOutFile: *mut ::std::os::raw::c_char,
+            path: *const ::std::os::raw::c_char,
+            out_path: *const ::std::os::raw::c_char,
         ) -> bool,
         ::libloading::Error,
     >,
     pub DebugCapture: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
     pub DebugCapturePath: Result<
-        unsafe extern "C" fn(
-            path_buff: *const ::std::os::raw::c_char,
-            buff_size: ::std::os::raw::c_int,
-        ) -> bool,
+        unsafe extern "C" fn(path: *const ::std::os::raw::c_char) -> bool,
         ::libloading::Error,
     >,
     pub GetLastErr: Result<unsafe extern "C" fn() -> ::std::os::raw::c_int, ::libloading::Error>,
@@ -124,8 +247,7 @@ pub struct cvAutoTrack {
         ) -> ::std::os::raw::c_int,
         ::libloading::Error,
     >,
-    pub SetDisableFileLog: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
-    pub SetEnableFileLog: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub GetMapIsEmbedded: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
     pub GetCompileVersion: Result<
         unsafe extern "C" fn(
             version_buff: *mut ::std::os::raw::c_char,
@@ -140,14 +262,20 @@ pub struct cvAutoTrack {
         ) -> bool,
         ::libloading::Error,
     >,
-    pub GetMapIsEmbedded: Result<unsafe extern "C" fn() -> bool, ::libloading::Error>,
+    pub GetHelpDoc: Result<
+        unsafe extern "C" fn(
+            doc_buff: *mut ::std::os::raw::c_char,
+            buff_size: ::std::os::raw::c_int,
+        ) -> bool,
+        ::libloading::Error,
+    >,
 }
 impl cvAutoTrack {
     pub unsafe fn new<P>(path: P) -> Result<Self, ::libloading::Error>
     where
         P: AsRef<::std::ffi::OsStr>,
     {
-        let library = ::libloading::Library::new(path)?;
+        let library = ::libloading::os::windows::Library::new(path)?;
         Self::from_library(library)
     }
     pub unsafe fn from_library<L>(library: L) -> Result<Self, ::libloading::Error>
@@ -155,20 +283,50 @@ impl cvAutoTrack {
         L: Into<::libloading::Library>,
     {
         let __library = library.into();
-        let verison = __library.get(b"verison\0").map(|sym| *sym);
-        let init = __library.get(b"init\0").map(|sym| *sym);
-        let uninit = __library.get(b"uninit\0").map(|sym| *sym);
-        let startServe = __library.get(b"startServe\0").map(|sym| *sym);
-        let stopServe = __library.get(b"stopServe\0").map(|sym| *sym);
+        let DebugLoadMapImagePath = __library.get(b"DebugLoadMapImagePath\0").map(|sym| *sym);
+        let InitResource = __library.get(b"InitResource\0").map(|sym| *sym);
+        let UnInitResource = __library.get(b"UnInitResource\0").map(|sym| *sym);
+        let StartServer = __library.get(b"StartServer\0").map(|sym| *sym);
+        let StopServer = __library.get(b"StopServer\0").map(|sym| *sym);
+        let SetServerInterval = __library.get(b"SetServerInterval\0").map(|sym| *sym);
+        let SetServerCallback = __library.get(b"SetServerCallback\0").map(|sym| *sym);
+        let SetDisableFileLog = __library.get(b"SetDisableFileLog\0").map(|sym| *sym);
+        let SetEnableFileLog = __library.get(b"SetEnableFileLog\0").map(|sym| *sym);
+        let SetLogFilePath = __library.get(b"SetLogFilePath\0").map(|sym| *sym);
+        let SetLogFileName = __library.get(b"SetLogFileName\0").map(|sym| *sym);
         let SetUseBitbltCaptureMode = __library.get(b"SetUseBitbltCaptureMode\0").map(|sym| *sym);
-        let SetUseDx11CaptureMode = __library.get(b"SetUseDx11CaptureMode\0").map(|sym| *sym);
-        let SetHandle = __library.get(b"SetHandle\0").map(|sym| *sym);
+        let SetUseGraphicsCaptureMode = __library
+            .get(b"SetUseGraphicsCaptureMode\0")
+            .map(|sym| *sym);
+        let SetUseDwmCaptureMode = __library.get(b"SetUseDwmCaptureMode\0").map(|sym| *sym);
+        let SetUseLocalPictureMode = __library.get(b"SetUseLocalPictureMode\0").map(|sym| *sym);
+        let SetUseLocalVideoMode = __library.get(b"SetUseLocalVideoMode\0").map(|sym| *sym);
+        let SetCaptureHandle = __library.get(b"SetCaptureHandle\0").map(|sym| *sym);
+        let SetCaptureHandleCallback = __library.get(b"SetCaptureHandleCallback\0").map(|sym| *sym);
+        let SetScreenSourceCallback = __library.get(b"SetScreenSourceCallback\0").map(|sym| *sym);
+        let SetScreenSourceCallbackEx = __library
+            .get(b"SetScreenSourceCallbackEx\0")
+            .map(|sym| *sym);
+        let SetScreenSourceImage = __library.get(b"SetScreenSourceImage\0").map(|sym| *sym);
+        let SetScreenSourceImageEx = __library.get(b"SetScreenSourceImageEx\0").map(|sym| *sym);
+        let SetScreenClientRectCallback = __library
+            .get(b"SetScreenClientRectCallback\0")
+            .map(|sym| *sym);
+        let SetTrackCachePath = __library.get(b"SetTrackCachePath\0").map(|sym| *sym);
+        let SetTrackCacheName = __library.get(b"SetTrackCacheName\0").map(|sym| *sym);
         let SetWorldCenter = __library.get(b"SetWorldCenter\0").map(|sym| *sym);
         let SetWorldScale = __library.get(b"SetWorldScale\0").map(|sym| *sym);
         let ImportMapBlock = __library.get(b"ImportMapBlock\0").map(|sym| *sym);
+        let ImportMapBlockData = __library.get(b"ImportMapBlockData\0").map(|sym| *sym);
         let ImportMapBlockCenter = __library.get(b"ImportMapBlockCenter\0").map(|sym| *sym);
+        let ImportMapBlockRelativeCenter = __library
+            .get(b"ImportMapBlockRelativeCenter\0")
+            .map(|sym| *sym);
         let ImportMapBlockCenterScale = __library
             .get(b"ImportMapBlockCenterScale\0")
+            .map(|sym| *sym);
+        let ImportMapBlockRelativeCenterScale = __library
+            .get(b"ImportMapBlockRelativeCenterScale\0")
             .map(|sym| *sym);
         let GetTransformOfMap = __library.get(b"GetTransformOfMap\0").map(|sym| *sym);
         let GetPositionOfMap = __library.get(b"GetPositionOfMap\0").map(|sym| *sym);
@@ -185,26 +343,45 @@ impl cvAutoTrack {
         let GetLastErr = __library.get(b"GetLastErr\0").map(|sym| *sym);
         let GetLastErrMsg = __library.get(b"GetLastErrMsg\0").map(|sym| *sym);
         let GetLastErrJson = __library.get(b"GetLastErrJson\0").map(|sym| *sym);
-        let SetDisableFileLog = __library.get(b"SetDisableFileLog\0").map(|sym| *sym);
-        let SetEnableFileLog = __library.get(b"SetEnableFileLog\0").map(|sym| *sym);
+        let GetMapIsEmbedded = __library.get(b"GetMapIsEmbedded\0").map(|sym| *sym);
         let GetCompileVersion = __library.get(b"GetCompileVersion\0").map(|sym| *sym);
         let GetCompileTime = __library.get(b"GetCompileTime\0").map(|sym| *sym);
-        let GetMapIsEmbedded = __library.get(b"GetMapIsEmbedded\0").map(|sym| *sym);
+        let GetHelpDoc = __library.get(b"GetHelpDoc\0").map(|sym| *sym);
         Ok(cvAutoTrack {
             __library,
-            verison,
-            init,
-            uninit,
-            startServe,
-            stopServe,
+            DebugLoadMapImagePath,
+            InitResource,
+            UnInitResource,
+            StartServer,
+            StopServer,
+            SetServerInterval,
+            SetServerCallback,
+            SetDisableFileLog,
+            SetEnableFileLog,
+            SetLogFilePath,
+            SetLogFileName,
             SetUseBitbltCaptureMode,
-            SetUseDx11CaptureMode,
-            SetHandle,
+            SetUseGraphicsCaptureMode,
+            SetUseDwmCaptureMode,
+            SetUseLocalPictureMode,
+            SetUseLocalVideoMode,
+            SetCaptureHandle,
+            SetCaptureHandleCallback,
+            SetScreenSourceCallback,
+            SetScreenSourceCallbackEx,
+            SetScreenSourceImage,
+            SetScreenSourceImageEx,
+            SetScreenClientRectCallback,
+            SetTrackCachePath,
+            SetTrackCacheName,
             SetWorldCenter,
             SetWorldScale,
             ImportMapBlock,
+            ImportMapBlockData,
             ImportMapBlockCenter,
+            ImportMapBlockRelativeCenter,
             ImportMapBlockCenterScale,
+            ImportMapBlockRelativeCenterScale,
             GetTransformOfMap,
             GetPositionOfMap,
             GetDirection,
@@ -220,61 +397,249 @@ impl cvAutoTrack {
             GetLastErr,
             GetLastErrMsg,
             GetLastErrJson,
-            SetDisableFileLog,
-            SetEnableFileLog,
+            GetMapIsEmbedded,
             GetCompileVersion,
             GetCompileTime,
-            GetMapIsEmbedded,
+            GetHelpDoc,
         })
     }
-    pub unsafe fn verison(&self, versionBuff: *mut ::std::os::raw::c_char) -> bool {
+    #[doc = " @brief 【开发保留】加载调试使用的地图图片，以用于可视化点位\n @brief 正式版本请移除此借口\n @param path 调试用的地图图片路径\n @return"]
+    pub unsafe fn DebugLoadMapImagePath(&self, name: *const ::std::os::raw::c_char) -> bool {
         (self
-            .verison
+            .DebugLoadMapImagePath
             .as_ref()
-            .expect("Expected function, got error."))(versionBuff)
+            .expect("Expected function, got error."))(name)
     }
-    pub unsafe fn init(&self) -> bool {
-        (self.init.as_ref().expect("Expected function, got error."))()
-    }
-    pub unsafe fn uninit(&self) -> bool {
-        (self.uninit.as_ref().expect("Expected function, got error."))()
-    }
-    pub unsafe fn startServe(&self) -> bool {
+    #[doc = " @brief 资源初始化\n @return 初始化状态"]
+    pub unsafe fn InitResource(&self) -> bool {
         (self
-            .startServe
+            .InitResource
             .as_ref()
             .expect("Expected function, got error."))()
     }
-    pub unsafe fn stopServe(&self) -> bool {
+    #[doc = " @brief 卸载资源\n @return 是否卸载成功"]
+    pub unsafe fn UnInitResource(&self) -> bool {
         (self
-            .stopServe
+            .UnInitResource
             .as_ref()
             .expect("Expected function, got error."))()
     }
+    #[doc = " @brief 启用循环调用服务\n @return 启用成功"]
+    pub unsafe fn StartServer(&self) -> bool {
+        (self
+            .StartServer
+            .as_ref()
+            .expect("Expected function, got error."))()
+    }
+    #[doc = " @brief 停止循环调用服务\n @return 停止成功"]
+    pub unsafe fn StopServer(&self) -> bool {
+        (self
+            .StopServer
+            .as_ref()
+            .expect("Expected function, got error."))()
+    }
+    #[doc = " @brief 循环调用间隔\n @param interval_ms 间隔时间\n @return 设置成功"]
+    pub unsafe fn SetServerInterval(&self, interval_ms: ::std::os::raw::c_int) -> bool {
+        (self
+            .SetServerInterval
+            .as_ref()
+            .expect("Expected function, got error."))(interval_ms)
+    }
+    #[doc = " @brief 设置循环调用回调函数\n @param callback 回调函数\n @return 设置成功"]
+    pub unsafe fn SetServerCallback(
+        &self,
+        callback: ::std::option::Option<
+            unsafe extern "C" fn(
+                json_buff: *const ::std::os::raw::c_char,
+                buff_size: ::std::os::raw::c_int,
+            ),
+        >,
+    ) -> bool {
+        (self
+            .SetServerCallback
+            .as_ref()
+            .expect("Expected function, got error."))(callback)
+    }
+    #[doc = " @brief 设置禁用日志文件\n @return 设置成功"]
+    pub unsafe fn SetDisableFileLog(&self) -> bool {
+        (self
+            .SetDisableFileLog
+            .as_ref()
+            .expect("Expected function, got error."))()
+    }
+    #[doc = " @brief 设置启用日志文件\n @return 设置成功"]
+    pub unsafe fn SetEnableFileLog(&self) -> bool {
+        (self
+            .SetEnableFileLog
+            .as_ref()
+            .expect("Expected function, got error."))()
+    }
+    #[doc = " @brief 设置日志文件路径\n @param path 路径，如果路径不存在会自动创建，默认为当前目录\n @return 设置成功"]
+    pub unsafe fn SetLogFilePath(&self, path: *const ::std::os::raw::c_char) -> bool {
+        (self
+            .SetLogFilePath
+            .as_ref()
+            .expect("Expected function, got error."))(path)
+    }
+    #[doc = " @brief 设置日志文件名\n @param name 文件名，默认为cvAutoTrack.log\n @return 设置成功"]
+    pub unsafe fn SetLogFileName(&self, name: *const ::std::os::raw::c_char) -> bool {
+        (self
+            .SetLogFileName
+            .as_ref()
+            .expect("Expected function, got error."))(name)
+    }
+    #[doc = " @brief 设置使用Bitblt截图模式\n @return 设置成功"]
     pub unsafe fn SetUseBitbltCaptureMode(&self) -> bool {
         (self
             .SetUseBitbltCaptureMode
             .as_ref()
             .expect("Expected function, got error."))()
     }
-    pub unsafe fn SetUseDx11CaptureMode(&self) -> bool {
+    #[doc = " @brief 设置使用WidnowsGraphicsCaphics截图模式\n @return 设置成功"]
+    pub unsafe fn SetUseGraphicsCaptureMode(&self) -> bool {
         (self
-            .SetUseDx11CaptureMode
+            .SetUseGraphicsCaptureMode
             .as_ref()
             .expect("Expected function, got error."))()
     }
-    pub unsafe fn SetHandle(&self, handle: ::std::os::raw::c_longlong) -> bool {
+    #[doc = " @brief 设置使用Dwm截图模式\n @return 设置成功"]
+    pub unsafe fn SetUseDwmCaptureMode(&self) -> bool {
         (self
-            .SetHandle
+            .SetUseDwmCaptureMode
+            .as_ref()
+            .expect("Expected function, got error."))()
+    }
+    #[doc = " @brief 设置使用本地图片截图模式\n @return 设置成功"]
+    pub unsafe fn SetUseLocalPictureMode(&self) -> bool {
+        (self
+            .SetUseLocalPictureMode
+            .as_ref()
+            .expect("Expected function, got error."))()
+    }
+    #[doc = " @brief 设置使用本地图片截图模式\n @return 设置成功"]
+    pub unsafe fn SetUseLocalVideoMode(&self) -> bool {
+        (self
+            .SetUseLocalVideoMode
+            .as_ref()
+            .expect("Expected function, got error."))()
+    }
+    #[doc = " @brief 设置采集句柄\n @param handle 句柄，传入0则自动寻找句柄\n @return 设置成功"]
+    pub unsafe fn SetCaptureHandle(&self, handle: ::std::os::raw::c_longlong) -> bool {
+        (self
+            .SetCaptureHandle
             .as_ref()
             .expect("Expected function, got error."))(handle)
     }
+    #[doc = " @brief 设置采集句柄回调函数\n @param callback 回调函数\n @return 设置成功"]
+    pub unsafe fn SetCaptureHandleCallback(
+        &self,
+        callback: ::std::option::Option<unsafe extern "C" fn() -> ::std::os::raw::c_longlong>,
+    ) -> bool {
+        (self
+            .SetCaptureHandleCallback
+            .as_ref()
+            .expect("Expected function, got error."))(callback)
+    }
+    #[doc = " @brief 设置视窗源回调函数\n @param callback 回调函数\n @return 设置成功"]
+    pub unsafe fn SetScreenSourceCallback(
+        &self,
+        callback: ::std::option::Option<
+            unsafe extern "C" fn(
+                image_encode_data: *const ::std::os::raw::c_char,
+                image_data_size: *mut ::std::os::raw::c_int,
+            ),
+        >,
+    ) -> bool {
+        (self
+            .SetScreenSourceCallback
+            .as_ref()
+            .expect("Expected function, got error."))(callback)
+    }
+    #[doc = " @brief 设置视窗源回调函数扩展\n @param callback 回调函数\n @return 设置成功"]
+    pub unsafe fn SetScreenSourceCallbackEx(
+        &self,
+        callback: ::std::option::Option<
+            unsafe extern "C" fn(
+                image_data: *const ::std::os::raw::c_char,
+                image_width: *mut ::std::os::raw::c_int,
+                image_height: *mut ::std::os::raw::c_int,
+                image_channels: *mut ::std::os::raw::c_int,
+            ),
+        >,
+    ) -> bool {
+        (self
+            .SetScreenSourceCallbackEx
+            .as_ref()
+            .expect("Expected function, got error."))(callback)
+    }
+    #[doc = " @brief 设置视窗源图片\n @param image_encode_data 图片文件二进制数据\n @param image_data_size 图片文件二进制数据大小\n @return 设置成功"]
+    pub unsafe fn SetScreenSourceImage(
+        &self,
+        image_encode_data: *const ::std::os::raw::c_char,
+        image_data_size: ::std::os::raw::c_int,
+    ) -> bool {
+        (self
+            .SetScreenSourceImage
+            .as_ref()
+            .expect("Expected function, got error."))(image_encode_data, image_data_size)
+    }
+    #[doc = " @brief 设置视窗源图片扩展\n @param image_data 图片数据指针\n @param image_width 图片宽度\n @param image_height 图片高度\n @param image_channels 图片通道数\n @return 设置成功"]
+    pub unsafe fn SetScreenSourceImageEx(
+        &self,
+        image_data: *const ::std::os::raw::c_char,
+        image_width: ::std::os::raw::c_int,
+        image_height: ::std::os::raw::c_int,
+        image_channels: ::std::os::raw::c_int,
+    ) -> bool {
+        (self
+            .SetScreenSourceImageEx
+            .as_ref()
+            .expect("Expected function, got error."))(
+            image_data,
+            image_width,
+            image_height,
+            image_channels,
+        )
+    }
+    #[doc = " @brief 设置视窗客户区位置回调函数，用于裁剪处理视窗源\n @param callback 回调函数\n @return 设置成功"]
+    pub unsafe fn SetScreenClientRectCallback(
+        &self,
+        callback: ::std::option::Option<
+            unsafe extern "C" fn(
+                x: *mut ::std::os::raw::c_int,
+                y: *mut ::std::os::raw::c_int,
+                width: *mut ::std::os::raw::c_int,
+                height: *mut ::std::os::raw::c_int,
+            ),
+        >,
+    ) -> bool {
+        (self
+            .SetScreenClientRectCallback
+            .as_ref()
+            .expect("Expected function, got error."))(callback)
+    }
+    #[doc = " @brief 设置缓存路径\n @param path 现有路径，默认为当前目录\n @return 设置成功"]
+    pub unsafe fn SetTrackCachePath(&self, path: *const ::std::os::raw::c_char) -> bool {
+        (self
+            .SetTrackCachePath
+            .as_ref()
+            .expect("Expected function, got error."))(path)
+    }
+    #[doc = " @brief 设置缓存文件名\n @param name 文件名，默认为cvAutoTrack.Cache\n @return 找到缓存文件"]
+    pub unsafe fn SetTrackCacheName(&self, name: *const ::std::os::raw::c_char) -> bool {
+        (self
+            .SetTrackCacheName
+            .as_ref()
+            .expect("Expected function, got error."))(name)
+    }
+    #[doc = " @brief 设置世界坐标原点\n @param x 原点x坐标\n @param y 原点y坐标\n @return 设置成功"]
     pub unsafe fn SetWorldCenter(&self, x: f64, y: f64) -> bool {
         (self
             .SetWorldCenter
             .as_ref()
             .expect("Expected function, got error."))(x, y)
     }
+    #[doc = " @brief 设置世界坐标缩放\n @param scale 缩放比例\n @return 设置成功"]
     pub unsafe fn SetWorldScale(&self, scale: f64) -> bool {
         (self
             .SetWorldScale
@@ -283,37 +648,62 @@ impl cvAutoTrack {
     }
     pub unsafe fn ImportMapBlock(
         &self,
-        id_x: ::std::os::raw::c_int,
-        id_y: ::std::os::raw::c_int,
-        image_data: *const ::std::os::raw::c_char,
+        uuid: ::std::os::raw::c_int,
+        image_encode_data: *const ::std::os::raw::c_char,
         image_data_size: ::std::os::raw::c_int,
-        image_width: ::std::os::raw::c_int,
-        image_height: ::std::os::raw::c_int,
     ) -> bool {
         (self
             .ImportMapBlock
             .as_ref()
             .expect("Expected function, got error."))(
-            id_x,
-            id_y,
+            uuid, image_encode_data, image_data_size
+        )
+    }
+    pub unsafe fn ImportMapBlockData(
+        &self,
+        uuid: ::std::os::raw::c_int,
+        image_data: *const ::std::os::raw::c_char,
+        image_width: ::std::os::raw::c_int,
+        image_height: ::std::os::raw::c_int,
+        image_channels: ::std::os::raw::c_int,
+    ) -> bool {
+        (self
+            .ImportMapBlockData
+            .as_ref()
+            .expect("Expected function, got error."))(
+            uuid,
             image_data,
-            image_data_size,
             image_width,
             image_height,
+            image_channels,
         )
     }
     pub unsafe fn ImportMapBlockCenter(
         &self,
+        uuid: ::std::os::raw::c_int,
         x: ::std::os::raw::c_int,
         y: ::std::os::raw::c_int,
     ) -> bool {
         (self
             .ImportMapBlockCenter
             .as_ref()
-            .expect("Expected function, got error."))(x, y)
+            .expect("Expected function, got error."))(uuid, x, y)
+    }
+    pub unsafe fn ImportMapBlockRelativeCenter(
+        &self,
+        uuid: ::std::os::raw::c_int,
+        parent_uuid: ::std::os::raw::c_int,
+        x: ::std::os::raw::c_int,
+        y: ::std::os::raw::c_int,
+    ) -> bool {
+        (self
+            .ImportMapBlockRelativeCenter
+            .as_ref()
+            .expect("Expected function, got error."))(uuid, parent_uuid, x, y)
     }
     pub unsafe fn ImportMapBlockCenterScale(
         &self,
+        uuid: ::std::os::raw::c_int,
         x: ::std::os::raw::c_int,
         y: ::std::os::raw::c_int,
         scale: f64,
@@ -321,7 +711,20 @@ impl cvAutoTrack {
         (self
             .ImportMapBlockCenterScale
             .as_ref()
-            .expect("Expected function, got error."))(x, y, scale)
+            .expect("Expected function, got error."))(uuid, x, y, scale)
+    }
+    pub unsafe fn ImportMapBlockRelativeCenterScale(
+        &self,
+        uuid: ::std::os::raw::c_int,
+        parent_uuid: ::std::os::raw::c_int,
+        x: ::std::os::raw::c_int,
+        y: ::std::os::raw::c_int,
+        scale: f64,
+    ) -> bool {
+        (self
+            .ImportMapBlockRelativeCenterScale
+            .as_ref()
+            .expect("Expected function, got error."))(uuid, parent_uuid, x, y, scale)
     }
     pub unsafe fn GetTransformOfMap(
         &self,
@@ -364,11 +767,15 @@ impl cvAutoTrack {
             .as_ref()
             .expect("Expected function, got error."))(x, y, isEnd)
     }
-    pub unsafe fn GetStarJson(&self, jsonBuff: *mut ::std::os::raw::c_char) -> bool {
+    pub unsafe fn GetStarJson(
+        &self,
+        json_buff: *mut ::std::os::raw::c_char,
+        buff_size: ::std::os::raw::c_int,
+    ) -> bool {
         (self
             .GetStarJson
             .as_ref()
-            .expect("Expected function, got error."))(jsonBuff)
+            .expect("Expected function, got error."))(json_buff, buff_size)
     }
     pub unsafe fn GetUID(&self, uid: *mut ::std::os::raw::c_int) -> bool {
         (self.GetUID.as_ref().expect("Expected function, got error."))(uid)
@@ -389,7 +796,7 @@ impl cvAutoTrack {
     }
     pub unsafe fn GetInfoLoadPicture(
         &self,
-        path: *mut ::std::os::raw::c_char,
+        path: *const ::std::os::raw::c_char,
         uid: *mut ::std::os::raw::c_int,
         x: *mut f64,
         y: *mut f64,
@@ -402,13 +809,13 @@ impl cvAutoTrack {
     }
     pub unsafe fn GetInfoLoadVideo(
         &self,
-        path: *mut ::std::os::raw::c_char,
-        pathOutFile: *mut ::std::os::raw::c_char,
+        path: *const ::std::os::raw::c_char,
+        out_path: *const ::std::os::raw::c_char,
     ) -> bool {
         (self
             .GetInfoLoadVideo
             .as_ref()
-            .expect("Expected function, got error."))(path, pathOutFile)
+            .expect("Expected function, got error."))(path, out_path)
     }
     pub unsafe fn DebugCapture(&self) -> bool {
         (self
@@ -416,15 +823,11 @@ impl cvAutoTrack {
             .as_ref()
             .expect("Expected function, got error."))()
     }
-    pub unsafe fn DebugCapturePath(
-        &self,
-        path_buff: *const ::std::os::raw::c_char,
-        buff_size: ::std::os::raw::c_int,
-    ) -> bool {
+    pub unsafe fn DebugCapturePath(&self, path: *const ::std::os::raw::c_char) -> bool {
         (self
             .DebugCapturePath
             .as_ref()
-            .expect("Expected function, got error."))(path_buff, buff_size)
+            .expect("Expected function, got error."))(path)
     }
     pub unsafe fn GetLastErr(&self) -> ::std::os::raw::c_int {
         (self
@@ -452,15 +855,9 @@ impl cvAutoTrack {
             .as_ref()
             .expect("Expected function, got error."))(json_buff, buff_size)
     }
-    pub unsafe fn SetDisableFileLog(&self) -> bool {
+    pub unsafe fn GetMapIsEmbedded(&self) -> bool {
         (self
-            .SetDisableFileLog
-            .as_ref()
-            .expect("Expected function, got error."))()
-    }
-    pub unsafe fn SetEnableFileLog(&self) -> bool {
-        (self
-            .SetEnableFileLog
+            .GetMapIsEmbedded
             .as_ref()
             .expect("Expected function, got error."))()
     }
@@ -484,11 +881,15 @@ impl cvAutoTrack {
             .as_ref()
             .expect("Expected function, got error."))(time_buff, buff_size)
     }
-    #[doc = " <summary>\n whether map image resources are embedded in dll\n </summary>\n <returns>true or false</returns>"]
-    pub unsafe fn GetMapIsEmbedded(&self) -> bool {
+    #[doc = " @brief\n @param doc_buff\n @param buff_size\n @return"]
+    pub unsafe fn GetHelpDoc(
+        &self,
+        doc_buff: *mut ::std::os::raw::c_char,
+        buff_size: ::std::os::raw::c_int,
+    ) -> bool {
         (self
-            .GetMapIsEmbedded
+            .GetHelpDoc
             .as_ref()
-            .expect("Expected function, got error."))()
+            .expect("Expected function, got error."))(doc_buff, buff_size)
     }
 }
