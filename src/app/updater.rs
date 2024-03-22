@@ -463,6 +463,86 @@ fn extract_files_with_extensions(
     Ok(())
 }
 
+pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>) -> Result<()> {
+    let app_config: AppConfig = config.clone().try_deserialize().unwrap();
+    if app_config.auto_app_update {
+        let result = super::updater::download_app(tx.clone(), client_id.clone());
+        match result {
+            Ok(_) => {
+                log::debug!("App Ready!");
+                return result;
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                log::debug!("현재 버전을 계속 사용합니다!");
+                let tx_result = send_app_update_info(tx.clone(), client_id.clone(), None);
+                match tx_result {
+                    Ok(_) => {
+                        return Err(e);
+                    }
+                    Err(e) => {
+                        log::error!("{}", e);
+                        return Err(e);
+                    }
+                }
+            }
+        }
+    } else {
+        log::debug!("자동 업데이트가 꺼져있습니다.");
+        log::debug!("현재 버전을 계속 사용합니다!");
+        let result = send_app_update_info(tx.clone(), client_id.clone(), None);
+        match result {
+            Ok(_) => {
+                return result;
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(e);
+            }   
+        }
+    }
+}
+
+pub fn check_lib_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>) -> Result<()> {
+    let app_config: AppConfig = config.clone().try_deserialize().unwrap();
+    if app_config.auto_app_update {
+        let result = super::updater::download_cvat(tx.clone(), client_id.clone());
+        match result {
+            Ok(_) => {
+                log::debug!("Lib Ready!");
+                return result;
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                log::debug!("현재 버전을 계속 사용합니다!");
+                let result = send_lib_update_info(tx.clone(), client_id.clone(), None);
+                match result {
+                    Ok(_) => {
+                        return Err(e);
+                    }
+                    Err(e) => {
+                        log::error!("{}", e);
+                        return Err(e);
+                    }
+                }
+            }
+        }
+    } else {
+        log::debug!("자동 업데이트가 꺼져있습니다.");
+        log::debug!("현재 버전을 계속 사용합니다!");
+        let result = send_lib_update_info(tx.clone(), client_id.clone(), None);
+        match result {
+            Ok(_) => {
+                return result;
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(e);
+            }
+        }
+    }
+}
+
 // 클라이언트로부터 이벤트를 전송받았을 경우
 pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>, rx: Option<Receiver<AppEvent>>) -> Result<()> {
     let mut app_ready = true;
@@ -471,77 +551,30 @@ pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>
         log::info!("UPDATER LOOP!");
         match r.recv() {
             Ok(AppEvent::CheckAppUpdate(id)) => {
-                let app_config: AppConfig = config.clone().try_deserialize().unwrap();
-                if app_config.auto_app_update {
-                    match super::updater::download_app(tx.clone(), id.clone()) {
-                        Ok(_) => {
-                            log::debug!("App Ready!");
-                            app_ready = true;
-                        }
-                        Err(e) => {
-                            log::error!("{}", e);
-                            log::debug!("현재 버전을 계속 사용합니다!");
-                            match send_app_update_info(tx.clone(), id.clone(), None) {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    log::error!("{}", e);
-                                }   
-                            }
-                            app_ready = true;
-                        }
-                    }
-                } else {
-                    log::debug!("자동 업데이트가 꺼져있습니다.");
-                    log::debug!("현재 버전을 계속 사용합니다!");
-                    match send_app_update_info(tx.clone(), id.clone(), None) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            log::error!("{}", e);
-                        }   
-                    }
-                    app_ready = true;
-                }
+                let result = check_app_update(config.clone(), id.clone(), tx.clone());
                 
+                match result {
+                    Ok(_) => {
+                        app_ready = true;
+                    }
+                    Err(e) => {
+                        app_ready = true;
+                    }
+                }
                 if app_ready && lib_ready {
                     break;
                 }
             }
             Ok(AppEvent::CheckLibUpdate(id)) => {
-                let app_config: AppConfig = config.clone().try_deserialize().unwrap();
-                if app_config.auto_app_update {
-                    match super::updater::download_cvat(tx.clone(), id.clone()) {
-                        Ok(_) => {
-                            log::debug!("Lib Ready!");
-                            lib_ready = true;
-                        }
-                        Err(e) => {
-                            log::error!("{}", e);
-                            log::debug!("현재 버전을 계속 사용합니다!");
-                            match send_lib_update_info(tx.clone(), id.clone(), None) {
-                                Ok(_) => {},
-                                Err(e) => {
-                                    log::error!("{}", e);
-                                }
-                            }
-                            lib_ready = true;
-                        }
+                let result = check_lib_update(config.clone(), id.clone(), tx.clone());
+                match result {
+                    Ok(_) => {
+                        lib_ready = true;
                     }
-                    if app_ready && lib_ready {
-                        break;
+                    Err(e) => {
+                        lib_ready = true;
                     }
-                } else {
-                    log::debug!("자동 업데이트가 꺼져있습니다.");
-                    log::debug!("현재 버전을 계속 사용합니다!");
-                    match send_lib_update_info(tx.clone(), id, None) {
-                        Ok(_) => {},
-                        Err(e) => {
-                            log::error!("{}", e);
-                        }
-                    }
-
-                    lib_ready = true;
                 }
-
                 if app_ready && lib_ready {
                     break;
                 }
