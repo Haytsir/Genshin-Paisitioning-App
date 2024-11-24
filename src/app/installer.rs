@@ -5,6 +5,8 @@ use winreg::RegKey;
 
 use crate::app::config::create_config_file_if_not_exist;
 use crate::app::run_cmd;
+use crate::views;
+use crate::views::confirm::confirm_dialog;
 
 use super::check_elevation;
 
@@ -21,7 +23,7 @@ pub fn install() -> Result<(), std::io::Error>{
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error: {}", e);
-                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치에 실패했습니다.", msgbox::IconType::None);
+                let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치에 실패했습니다.", true);
                 return Err(e.into());
             }
         }
@@ -30,7 +32,7 @@ pub fn install() -> Result<(), std::io::Error>{
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error: {}", e);
-                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치에 실패했습니다.", msgbox::IconType::None);
+                let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치에 실패했습니다.", true);
                 return Err(e.into());
             }
         }
@@ -39,13 +41,13 @@ pub fn install() -> Result<(), std::io::Error>{
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error: {}", e);
-                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치에 실패했습니다.", msgbox::IconType::None);
+                let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치에 실패했습니다.", true);
                 return Err(e.into());
             }
         }
-        let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 완료했습니다.", msgbox::IconType::None);
+        let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 완료했습니다.", false);
     } else {
-        let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 취소했습니다.\n관리자 권한이 필요합니다.", msgbox::IconType::None);
+        let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 취소했습니다.\n관리자 권한이 필요합니다.", true);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "관리자 권한이 필요합니다."));
     }
     Ok(())
@@ -63,7 +65,7 @@ pub fn uninstall() -> Result<(), std::io::Error> {
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error: {}", e);
-                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거에 실패했습니다.", msgbox::IconType::None);
+                let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거에 실패했습니다.", true);
                 return Err(e.into());
             }
         }
@@ -72,7 +74,7 @@ pub fn uninstall() -> Result<(), std::io::Error> {
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error: {}", e);
-                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거에 실패했습니다.", msgbox::IconType::None);
+                let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거에 실패했습니다.", true);
                 return Err(e.into());
             }
         }
@@ -80,7 +82,7 @@ pub fn uninstall() -> Result<(), std::io::Error> {
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error: {}", e);
-                let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거에 실패했습니다.", msgbox::IconType::None);
+                let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거에 실패했습니다.", true);
                 return Err(e.into());
             }
         }
@@ -92,7 +94,7 @@ pub fn uninstall() -> Result<(), std::io::Error> {
             .as_str(),
         );
     } else {
-        let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거를 취소했습니다.\n관리자 권한이 필요합니다.", msgbox::IconType::None);
+        let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거를 취소했습니다.\n관리자 권한이 필요합니다.", true);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "관리자 권한이 필요합니다."));
     }
     Ok(())

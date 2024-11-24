@@ -1,7 +1,8 @@
 pub mod config;
 pub mod installer;
-mod tray;
 pub mod updater;
+
+mod tray;
 mod utils;
 
 pub use self::tray::*;

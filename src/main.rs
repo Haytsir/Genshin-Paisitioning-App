@@ -6,6 +6,7 @@ mod app;
 mod cvat;
 mod models;
 mod websocket;
+mod views;
 
 use app::{is_process_already_running, updater::updater_event_handler};
 use crossbeam_channel::{unbounded, Receiver, Sender};
