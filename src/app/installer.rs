@@ -39,7 +39,7 @@ pub fn install() -> Result<(), std::io::Error>{
             Ok(_) => {}
             Err(e) => {
                 log::error!("Error: {}", e);
-                let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), &format!("GPA 설치에 실패했습니다.\n설정 파일 생성 실패\n{}\n{}", e.to_string(), &target_dir.join("config.json").display()), true);
+                let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), &format!("GPA 설치에 실패했습니다.\n설정 파일 생성 실패\n{}", e.to_string()), true);
                 return Err(e.into());
             }
         }
