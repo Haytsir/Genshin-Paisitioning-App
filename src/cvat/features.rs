@@ -224,8 +224,6 @@ pub fn track_process(cvat: &cvAutoTrack, sender: Option<Sender<WsEvent>>) -> Res
     ) {
         Ok(_) => {}
         Err(e) => {
-            println!("track_process: {}", e);
-            log::error!("{}", e);
             trackdata.err = e.to_string();
             let _ = sender.unwrap().send(WsEvent::Track(trackdata));
             return Err(e);
@@ -243,20 +241,18 @@ pub fn track(
     r: &mut c_double,
     m: &mut c_int,
 ) -> Result<(), Box<dyn Error>> {
-    
     if unsafe {!cvat.GetTransformOfMap(x, y, a, m)} {        
-        let mut cs:[i8; 256] = [0; 256];
-        let c_buf: *mut i8 = cs.as_mut_ptr();
-        unsafe { cvat.GetLastErrJson(c_buf, 256) };
-        let c_str: &CStr = unsafe { CStr::from_ptr(c_buf) };
-        return Err(c_str.to_str().unwrap().into());
+        return Err(get_last_err_json(&cvat).to_str().unwrap().into());
     }
     if unsafe {!cvat.GetRotation(r)} {
-        let mut cs:[i8; 256] = [0; 256];
-        let c_buf: *mut i8 = cs.as_mut_ptr();
-        unsafe { cvat.GetLastErrJson(c_buf, 256) };
-        let c_str: &CStr = unsafe { CStr::from_ptr(c_buf) };
-        return Err(c_str.to_str().unwrap().into());
+        return Err(get_last_err_json(&cvat).to_str().unwrap().into());
     }
     Ok(())
+}
+
+fn get_last_err_json(cvat: &cvAutoTrack) -> &CStr {
+    let mut cs:[i8; 256] = [0; 256];
+    let c_buf: *mut i8 = cs.as_mut_ptr();
+    unsafe { cvat.GetLastErrJson(c_buf, 256) };
+    unsafe { CStr::from_ptr(c_buf) }
 }
