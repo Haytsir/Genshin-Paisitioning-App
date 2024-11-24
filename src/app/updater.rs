@@ -6,7 +6,6 @@ use crate::models::{WsEvent, AppConfig};
 use crate::models::{AppEvent, UpdateInfo};
 use crossbeam_channel::{Receiver, Sender};
 use directories::ProjectDirs;
-use sevenz_rust::*;
 use std::collections::HashMap;
 use std::fs::{File, self};
 use std::path::PathBuf;
@@ -36,7 +35,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
     
     // 태그 이름 가져오기
     let version = env!("CARGO_PKG_VERSION");
-    let release_name = &json["tag_name"].as_str().unwrap_or("")[1..];
+    let release_name = &json["name"].as_str().unwrap_or("")[1..];
 
     // 업데이트를 요청한 유저에게 보낼 update info 생성
     let mut update_info = UpdateInfo {
@@ -51,7 +50,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
     };
 
     // 버전 비교
-    if compare_versions(version, release_name) {
+    if compare_versions(version, &json["tag_name"].as_str().unwrap_or("")) {
         log::debug!("현재 GPA 버전이 최신 버전 {}과 일치합니다.", release_name);
         update_info.done = true;
         update_info.updated = false;
@@ -146,8 +145,8 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
 }
 
 pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> Result<()> {
-    let owner = "GengGode"; // GitHub 저장소 소유자 이름
-    let repo: &str = "cvAutoTrack"; // GitHub 저장소 이름
+    let owner = "Haytsir"; // GitHub 저장소 소유자 이름
+    let repo: &str = "gpa-lib-mirror"; // GitHub 저장소 이름
     let lib_path = std::env::current_exe()
         .unwrap()
         .parent()
@@ -163,12 +162,16 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
         "https://api.github.com/repos/{}/{}/releases/latest",
         owner, repo
     );
-    let response = client.get(&url).header("User-Agent", "reqwest").send()?;
+    let response = client.get(&url)
+                                    .header("User-Agent", "reqwest")
+                                    .header("Accept", "application/vnd.github.v3+json")
+                                    .header("Content-Type", "application/json")
+                                    .send()?;
     let json: Value = serde_json::from_str(&response.text()?)?;
 
     // 태그 이름 가져오기
     let version = get_local_version(&lib_path);
-    let release_name = json["tag_name"].as_str().unwrap_or("");
+    let release_name = json["name"].as_str().unwrap_or("");
 
     // 업데이트를 요청한 유저에게 보낼 update info 생성
     let mut update_info = UpdateInfo {
@@ -182,8 +185,11 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
         updated: true,
     };
 
-    // 버전 비교
-    if compare_versions(&version, release_name) {
+    // 버전 비교, 최신 버전이 버전 숫자가 더 낮은 경우가 있으니 파일 수정 시간으로 비교
+    let last_file_modified = get_file_modified_time(&lib_path.join("cvAutoTrack.dll"))?;
+    let last_lib_published = parse_iso8601(json["published_at"].as_str().unwrap_or(""))?;
+
+    if last_file_modified > last_lib_published/* compare_versions(&version, json["tag_name"].as_str().unwrap_or("")) */ {
         log::debug!("현재 CVAT 버전이 최신 버전 {}과 일치합니다.", release_name);
         update_info.done = true;
         update_info.updated = false;
@@ -210,11 +216,11 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
         let sender = sender.clone();
         let update_info = update_info.clone();
 
-        // github에서 받은 파일이 .7z 확장자인 경우
-        if asset_name.ends_with(".7z") {
+        // github에서 받은 파일이 .zip 확장자인 경우
+        if asset_name.ends_with(".zip") {
             // 파일 다운로드 및 저장
             let runtime = tokio::runtime::Runtime::new().unwrap();
-            // arch_path: .7z 파일의 경로
+            // arch_path: .zip 파일의 경로
             let arch_path = cache_dir.join(asset_name);
             let target_path = lib_path.clone();
             let res = runtime
@@ -236,7 +242,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
                     mappings.insert("dll", &target_path);
                     //                mappings.insert("md5", &lib_path);
                     //                mappings.insert("tag", &lib_path);
-                    extract_files_with_extensions(&arch_path, mappings)?;
+                    extract_files_from_zip(&arch_path, mappings)?;
                     Ok(())
                 });
             match res {
@@ -286,7 +292,15 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
 
     Ok(())
 }
-
+fn get_file_modified_time(file_path: &PathBuf) -> Result<std::time::SystemTime> {
+    let metadata = std::fs::metadata(file_path)?;
+    let modified_time = metadata.modified()?;
+    Ok(modified_time)
+}
+fn parse_iso8601(date: &str) -> Result<std::time::SystemTime> {
+    let datetime = chrono::DateTime::parse_from_rfc3339(date)?;
+    Ok(datetime.into())
+}
 fn get_local_version(lib_path: &PathBuf) -> String {
     // TODO:
     log::debug!("{}", lib_path.to_str().unwrap());
@@ -419,47 +433,6 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
             }
         }
     }
-    Ok(())
-}
-
-fn extract_files_with_extensions(
-    archive_path: &PathBuf,
-    mappings: HashMap<&str, &PathBuf>,
-) -> Result<()> {
-    // 압축 해제 시작
-    sevenz_rust::decompress_file_with_extract_fn(archive_path, "", |entry, reader, _| {
-        log::debug!("압축 해제할 파일명: {}", entry.name());
-        if let Some(ext) = PathBuf::from(entry.name())
-            .extension()
-            .and_then(|e| e.to_str())
-        {
-            if let Some(out_path) = mappings.get(ext) {
-                log::debug!("압축 해제 대상 경로: {:?}", out_path.to_str().unwrap());
-                let mut out_file_path = PathBuf::from(out_path.to_str().unwrap());
-                out_file_path = out_file_path.join(entry.name());
-
-                // create parent directories if necessary
-                if let Some(parent) = out_file_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-
-                log::debug!("start extract {:?}", out_file_path.to_str());
-                let r = default_entry_extract_fn(entry, reader, &out_file_path);
-
-                match r {
-                    Ok(_) => {
-                        log::debug!("done writing")
-                    }
-                    Err(err) => {
-                        log::debug!("Error: Failed to extract file.");
-                        log::debug!("{}", err);
-                    }
-                }
-            }
-        }
-        Ok(true)
-    })
-    .expect("complete");
     Ok(())
 }
 
