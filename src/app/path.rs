@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
-use directories::ProjectDirs;
+use directories::{BaseDirs, ProjectDirs};
 
 pub fn get_app_path() -> PathBuf {
+    let base_dir = BaseDirs::new().unwrap().data_local_dir().to_path_buf();
     match ProjectDirs::from("com", "genshin-paisitioning", "") {
-        Some(proj_dirs) => proj_dirs.project_path().to_path_buf(),
+        Some(proj_dirs) => base_dir.join(proj_dirs.project_path()).to_path_buf(),
         None => PathBuf::new(),
     }
 }
