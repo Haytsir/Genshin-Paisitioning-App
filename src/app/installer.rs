@@ -5,7 +5,6 @@ use winreg::RegKey;
 
 use crate::app::config::create_config_file_if_not_exist;
 use crate::app::run_cmd;
-use crate::views;
 use crate::views::confirm::confirm_dialog;
 
 use super::check_elevation;

@@ -12,6 +12,7 @@ use app::{is_process_already_running, updater::updater_event_handler};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use cvat::cvat_event_handler;
 use directories::ProjectDirs;
+use crate::views::confirm::confirm_dialog;
 use models::{AppEvent, WsEvent};
 use threadpool::ThreadPool;
 use log::*;
@@ -43,7 +44,7 @@ fn main() {
         }
         Err(e) => {
             log::error!("Error: {}", e);
-            let _ = msgbox::create(env!("CARGO_PKG_DESCRIPTION"), &format!("GPA 설치에 실패했습니다.\n{}", e), msgbox::IconType::None);
+            let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), &format!("GPA 설치에 실패했습니다.\n{}", e), true);
             return;
         }
     }
