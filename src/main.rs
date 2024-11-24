@@ -35,9 +35,7 @@ fn main() {
             let current_exe = std::env::current_exe().unwrap();
             let exe_name = current_exe.file_name().unwrap();
             if std::env::args().find(|x| x.eq("--update")).is_none() {
-                install(false);
-            } else {
-                install(true);
+                app::installer::install().unwrap();
             }
             return;
         }

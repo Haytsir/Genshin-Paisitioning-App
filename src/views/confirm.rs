@@ -1,6 +1,4 @@
 pub fn confirm_dialog(title:&str, desc: &str, is_error: bool) -> std::option::Option<rfd::MessageDialogResult> {
-    #[cfg(not(feature = "gtk3"))]
-    let res = "";
     #[cfg(any(
         target_os = "windows",
         target_os = "macos",
@@ -12,7 +10,6 @@ pub fn confirm_dialog(title:&str, desc: &str, is_error: bool) -> std::option::Op
                 target_os = "netbsd",
                 target_os = "openbsd"
             ),
-            feature = "gtk3"
         )
     ))]
     let res = rfd::MessageDialog::new()
