@@ -54,16 +54,17 @@ jobs:
       # Action 실행전에 필요한 작업
       # 1. Checkout code
       - name: Download artifact
+        id: download_artifact
         uses: actions/download-artifact@v4
         with:
           name: build-result
-          path: .
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           sparse-checkout: 'Cargo.toml'
           sparse-checkout-cone-mode: false
       - run: git fetch --all --tags
+      - run: ls -al
       # 2. Check Release Version
       - name: Check Release Version
         id: version_check
@@ -79,17 +80,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          allowUpdates: true
+          artifacts: genshin_paisitioning_app.zip
+          artifactContentType: application/zip
           tag: ${{ steps.version_check.outputs.releaseVersion }}
           name: Release ${{ steps.version_check.outputs.releaseVersion }}
           draft: false
           prerelease: false
-        # 4. Release Asset 업로드
-      - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
-        with:
-          name: ${{ steps.version_check.outputs.releaseVersion }}
-          tag_name: ${{ steps.version_check.outputs.releaseVersion }}
-          files: genshin_paisitioning_app.zip
     outputs:
       versionChanged: ${{ steps.version_check.outputs.versionChanged }}
       releaseVersion: ${{ steps.version_check.outputs.releaseVersion }}
