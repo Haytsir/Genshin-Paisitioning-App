@@ -1,6 +1,7 @@
 pub mod config;
 pub mod installer;
 pub mod updater;
+pub mod path;
 
 mod tray;
 mod utils;

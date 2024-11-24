@@ -1,17 +1,16 @@
-use directories::ProjectDirs;
+use crate::app::path;
 use std::path::Path;
+use std::time::Duration;
 use winreg::enums::*;
 use winreg::RegKey;
 
 use crate::app::config::create_config_file_if_not_exist;
-use crate::app::run_cmd;
 use crate::views::confirm::confirm_dialog;
 
 use super::check_elevation;
 
 pub fn install() -> Result<(), std::io::Error>{
-    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-    let target_dir = proj_dirs.cache_dir().parent().unwrap();
+    let target_dir = path::get_app_path();
     let current_exe = std::env::current_exe().unwrap();
     let exe_name = current_exe.file_name().unwrap();
     if check_elevation(&target_dir.join(exe_name), vec!["--install".to_string()]) {
@@ -45,6 +44,7 @@ pub fn install() -> Result<(), std::io::Error>{
             }
         }
         let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 완료했습니다.", false);
+        std::thread::sleep(Duration::from_millis(5000));
     } else {
         let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 취소했습니다.\n관리자 권한이 필요합니다.", true);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "관리자 권한이 필요합니다."));
@@ -53,8 +53,7 @@ pub fn install() -> Result<(), std::io::Error>{
 }
 
 pub fn uninstall() -> Result<(), std::io::Error> {
-    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-    let target_dir = proj_dirs.cache_dir().parent().unwrap();
+    let target_dir = path::get_app_path();
     let current_exe = std::env::current_exe().unwrap();
     let exe_name = current_exe.file_name().unwrap();
     if check_elevation(&target_dir.join(exe_name), vec!["--uninstall".to_string()]) {
@@ -85,13 +84,7 @@ pub fn uninstall() -> Result<(), std::io::Error> {
                 return Err(e.into());
             }
         }
-        run_cmd(
-            format!(
-                "ping localhost -n 3 > nul & del /F /Q /S {}",
-                target_dir.to_str().unwrap()
-            )
-            .as_str(),
-        );
+        self_replace::self_delete_at(target_dir);
     } else {
         let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거를 취소했습니다.\n관리자 권한이 필요합니다.", true);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "관리자 권한이 필요합니다."));

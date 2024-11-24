@@ -8,10 +8,9 @@ mod models;
 mod websocket;
 mod views;
 
-use app::{is_process_already_running, updater::updater_event_handler};
+use app::{is_process_already_running, updater::updater_event_handler, path};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use cvat::cvat_event_handler;
-use directories::ProjectDirs;
 use crate::views::confirm::confirm_dialog;
 use models::{AppEvent, WsEvent};
 use threadpool::ThreadPool;
@@ -32,15 +31,15 @@ fn main() {
     match app::check_proj_directory() {
         Ok(true) => {}
         Ok(false) => {
-            let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-            let target_dir = proj_dirs.cache_dir().parent().unwrap();
+            let target_dir = path::get_app_path();
             let current_exe = std::env::current_exe().unwrap();
             let exe_name = current_exe.file_name().unwrap();
             if std::env::args().find(|x| x.eq("--update")).is_none() {
-                if !app::check_elevation(&target_dir.join(exe_name), vec!["--install".to_string()]) {
-                    return;
-                }
+                install(false);
+            } else {
+                install(true);
             }
+            return;
         }
         Err(e) => {
             log::error!("Error: {}", e);

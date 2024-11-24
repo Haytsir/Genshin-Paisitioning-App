@@ -1,4 +1,4 @@
-use directories::ProjectDirs;
+use crate::app::path;
 use std::fs;
 use std::{ffi::CString, path::PathBuf};
 use std::path::Path;
@@ -53,45 +53,30 @@ pub fn set_lib_directory() -> Result<(), std::io::Error> {
 
 // 현재 프로그램이 프로젝트 디렉토리에서 실행중인지 확인한다.
 pub fn check_proj_directory() -> Result<bool, std::io::Error> {
-    // 프로젝트 디렉토리 정의
-    if let Some(proj_dirs) = ProjectDirs::from("com", "genshin-paisitioning", "") {
-        // target_dir의 내용이 프로젝트 디렉토리의 Root가 된다.
-        let target_dir = proj_dirs.cache_dir().parent().unwrap();
-        log::debug!("Project Directory: {}", target_dir.display());
-        // 먼저 프로젝트 디렉토리가 존재하지 않는다면 생성한다.
-        match std::fs::create_dir_all(proj_dirs.cache_dir()) {
-            Ok(_) => {
-                log::debug!("Project Directory: 생성 성공");
-            }
-            Err(e) => {
-                log::debug!("Project Directory: 생성 실패");
-                log::debug!("Error: {}", e);
-                return Err(e);
-            }
+    // target_dir의 내용이 프로젝트 디렉토리의 Root가 된다.
+    let target_dir = path::get_app_path();
+    log::debug!("Project Directory: {}", target_dir.display());
+    // 먼저 프로젝트 디렉토리가 존재하지 않는다면 생성한다.
+    match std::fs::create_dir_all(path::get_cache_path()) {
+        Ok(_) => {
+            log::debug!("Project Directory: 생성 성공");
         }
-
-        // Current Working Directory를 얻어낸다.
-        let current_exe = std::env::current_exe().unwrap();
-        let cwd = current_exe.parent().unwrap();
-        let exe_name = current_exe.file_name().unwrap();
-
-        // 현재 작업 디렉토리와 프로젝트 디렉토리를 대조하고,
-        // 일치하지 않으면 파일을 복사한다.
-        if !cwd.eq(target_dir) {
-            match std::fs::copy(&current_exe, target_dir.join(exe_name)) {
-                Ok(_) => {
-                    log::debug!("실행 파일을 Project Directory로 복사 성공");
-                }
-                Err(e) => {
-                    log::debug!("실행 파일을 Project Directory로 복사 실패");
-                    log::debug!("Error: {}", e);
-                    return Err(e);
-                }
-            }
-            return Ok(false);
+        Err(e) => {
+            log::debug!("Project Directory: 생성 실패");
+            log::debug!("Error: {}", e);
+            return Err(e);
         }
     }
-    Ok(true)
+
+    // Current Working Directory를 얻어낸다.
+    let cwd = path::get_current_work_directory();
+
+    // 현재 작업 디렉토리와 프로젝트 디렉토리를 대조한다.
+    if !cwd.eq(&target_dir) {
+        return Ok(false);
+    } else {
+        return Ok(true);
+    }
 }
 
 pub fn check_elevation(target: &Path, args: Vec<String>) -> bool {
@@ -206,8 +191,7 @@ use log4rs::{
 pub fn enable_debug() -> Result<(), log::SetLoggerError> {
 
     // Remove all log files in the log directory but not the directory it self.
-    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-    let target_dir = proj_dirs.cache_dir().parent().unwrap().join("logs");
+    let target_dir = path::get_logs_path();
     match fs::remove_dir_all(&target_dir) {
         Ok(_) => {
             log::debug!("Log files removed.");

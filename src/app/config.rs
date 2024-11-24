@@ -1,15 +1,14 @@
 use config::Config;
-use directories::ProjectDirs;
 use std::error::Error;
 use std::path::PathBuf;
+use crate::app::path;
 
 use crate::models::AppConfig;
 
 pub fn init_config() -> Result<Config, std::io::Error> {
-    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-    let target_dir = proj_dirs.cache_dir().parent().unwrap();
+    let target_dir = path::get_app_path();
 
-    match std::fs::create_dir_all(proj_dirs.cache_dir()) {
+    match std::fs::create_dir_all(path::get_cache_path()) {
         Ok(_) => {},
         Err(e) => {
             log::error!("Project Directory: 생성 실패");
@@ -67,8 +66,7 @@ pub fn create_config_file_if_not_exist(target_path: &PathBuf) -> Result<(), std:
 }
 
 pub fn save_config(app_config: &AppConfig) -> Result<(), Box<dyn Error>> {
-    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-    let target_dir = proj_dirs.cache_dir().parent().unwrap();
+    let target_dir = path::get_app_path();
     std::fs::write(
         target_dir.join("config.json"),
         serde_json::to_string_pretty(&app_config).unwrap(),

@@ -1,4 +1,4 @@
-pub fn confirm_dialog(title:&str, desc: &str, is_error: bool) -> () {
+pub fn confirm_dialog(title:&str, desc: &str, is_error: bool) -> std::option::Option<rfd::MessageDialogResult> {
     #[cfg(not(feature = "gtk3"))]
     let res = "";
     #[cfg(any(
@@ -21,5 +21,7 @@ pub fn confirm_dialog(title:&str, desc: &str, is_error: bool) -> () {
         .set_buttons(rfd::MessageButtons::Ok)
         .set_level(if is_error{rfd::MessageLevel::Error}else{rfd::MessageLevel::Info})
         .show();
+
+    return Some(res);
 
 }

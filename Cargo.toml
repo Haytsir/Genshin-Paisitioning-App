@@ -32,6 +32,8 @@ tray-item = {git="https://github.com/fgimian/tray-item-rs.git", branch="switch-t
 config = "*"
 single-instance = "0.3"
 rfd = "*"
+self-replace = "1"
+
 
 [target.'cfg(windows)'.dependencies]
 windows = {version = "*", features = [

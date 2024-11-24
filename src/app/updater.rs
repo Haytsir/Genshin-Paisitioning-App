@@ -4,8 +4,9 @@ use crate::app::terminate_process;
 //use sevenz_rust::default_entry_extract_fn;
 use crate::models::{WsEvent, AppConfig};
 use crate::models::{AppEvent, UpdateInfo};
+use crate::views::confirm::confirm_dialog;
 use crossbeam_channel::{Receiver, Sender};
-use directories::ProjectDirs;
+use crate::app::path;
 use std::collections::HashMap;
 use std::fs::{File, self};
 use std::path::PathBuf;
@@ -17,8 +18,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
     let owner = "Haytsir";
     let repo: &str = "Genshin-Paisitioning-App";
 
-    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-    let cache_dir = proj_dirs.cache_dir().to_path_buf();
+    let cache_dir = path::get_cache_path();
 
     // 최신 릴리스 정보 가져오기
     let client = Client::new();
@@ -112,27 +112,22 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
                         }
                     }
 
+                    let current_exe = std::env::current_exe().unwrap();
+                    let exe_name = current_exe.file_name().unwrap();
+
+                    log::debug!("Updating...");
+                    self_replace::self_replace(&cache_dir.join(exe_name))?;
+                    fs::remove_file(&cache_dir.join(exe_name))?;
+                    let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 업데이트를 완료했습니다.", false);
+
                     let mut update_info = update_info.clone();
                     update_info.done = true;
                     let _ = sender.as_ref().unwrap().send(WsEvent::UpdateInfo(
                         update_info,
                         requester_id.clone(),
                     ));
-
-                    let mut args: Vec<String> = vec!["--update".to_string()];
-                    args.extend(std::env::args());
-                    let mut i = 0;
-                    for a in std::env::args() {
-                        if i > 0 {
-                            args.push(a);
-                        }
-                        i = i+1;
-                    }
                     
                     std::thread::sleep(Duration::from_millis(1000));
-                    let current_exe = std::env::current_exe().unwrap();
-                    let exe_name = current_exe.file_name().unwrap();
-                    super::run_shell_execute(&cache_dir.join(exe_name), args, None);
                     terminate_process();
                 }
                 Err(e) => {
@@ -152,9 +147,8 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
         .parent()
         .unwrap()
         .join("cvAutoTrack"); // 저장할 파일 경로 및 이름
-
-    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-    let cache_dir = proj_dirs.cache_dir();
+    
+    let cache_dir = path::get_cache_path();
 
     // 최신 릴리스 정보 가져오기
     let client = Client::new();
