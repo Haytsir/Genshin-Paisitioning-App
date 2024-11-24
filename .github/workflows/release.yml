@@ -83,7 +83,7 @@ jobs:
           artifacts: ${{ steps.download_artifact.outputs.download-path }}/genshin_paisitioning_app.zip
           artifactContentType: application/zip
           tag: ${{ steps.version_check.outputs.releaseVersion }}
-          name: Release ${{ steps.version_check.outputs.releaseVersion }}
+          name: ${{ steps.version_check.outputs.releaseVersion }}
           draft: false
           prerelease: false
     outputs:
