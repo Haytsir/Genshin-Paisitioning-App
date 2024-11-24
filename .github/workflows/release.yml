@@ -63,8 +63,7 @@ jobs:
           sparse-checkout: 'Cargo.toml'
           sparse-checkout-cone-mode: false
       - run: git fetch --all --tags
-      - run: cwd
-      - run: ls -alR
+      - run: ls -alR ..
       # 2. Check Release Version
       - name: Check Release Version
         id: version_check
