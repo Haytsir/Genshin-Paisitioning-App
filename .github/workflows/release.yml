@@ -56,7 +56,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: parsed-result
+          name: build-result
           path: .
       - name: Checkout code
         uses: actions/checkout@v4
