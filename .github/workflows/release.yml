@@ -52,19 +52,18 @@ jobs:
     steps:
       # Action 실행전에 필요한 작업
       # 1. Checkout code
-      - name: Download artifact
-        id: download_artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build-result
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           sparse-checkout: 'Cargo.toml'
           sparse-checkout-cone-mode: false
-      - run: git fetch --all --tags
-      - run: ls -alR ..
+      - name: Download artifact
+        id: download_artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-result
       # 2. Check Release Version
+      - run: git fetch --all --tags
       - name: Check Release Version
         id: version_check
         uses: thebongy/version-check@v1
