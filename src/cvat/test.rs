@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod lib_tests {
     use std::{path::PathBuf, ffi::{CStr, c_double, c_int}, error::Error};
-    use crate::{cvat::cvAutoTrack, models};
+    use crate::{cvat::bindings::cvAutoTrack, models};
 
     #[test]
     fn libload() {

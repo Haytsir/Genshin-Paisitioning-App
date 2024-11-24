@@ -1,11 +1,54 @@
 use directories::ProjectDirs;
-use std::ffi::CString;
+use std::fs;
+use std::{ffi::CString, path::PathBuf};
 use std::path::Path;
 use std::process::Command;
 use windows::{
     core::{s, Result as WinResult, PCSTR}, Win32::Foundation::*, Win32::Security::*, Win32::{System::Memory::*, UI::Shell::ShellExecuteA},
-    Win32::System::Threading::*,
+    Win32::System::{
+                    LibraryLoader::SetDllDirectoryW,
+                    Threading::*
+    },
 };
+
+
+pub fn set_lib_directory() -> Result<(), std::io::Error> {
+    let mut d: PathBuf;
+
+    d = PathBuf::from(std::env::current_exe().unwrap());
+    d.pop();
+    d.push("cvAutoTrack");
+
+    log::debug!("{}", d.display());
+
+    #[cfg(debug_assertions)]
+    {
+        let mut dd = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        dd.push("lib\\bin");
+
+        match fs::metadata(&dd) {
+            Ok(_) => d = dd,
+            Err(_) => log::debug!("lib\\bin doesn't exist. Using current directory."),
+        }
+    }
+
+    log::debug!("{}", d.display());
+
+    match fs::metadata(&d) {
+        Ok(_) => {
+            let mut dll_dir_vec = d.to_str().expect("Unexpected directory name").encode_utf16().collect::<Vec<_>>();
+            dll_dir_vec.push(0);
+            let dll_dir = dll_dir_vec.as_ptr() as *mut u16;
+            
+            unsafe { let _ = SetDllDirectoryW( windows::core::PCWSTR::from_raw(dll_dir) ); };
+            return Ok(());
+        }
+        Err(e) => {
+            log::debug!("Library Directory: {}", e);
+            return Err(e.into());
+        }
+    }
+}
 
 
 // 현재 프로그램이 프로젝트 디렉토리에서 실행중인지 확인한다.
@@ -161,16 +204,26 @@ use log4rs::{
     filter::threshold::ThresholdFilter,
 };
 pub fn enable_debug() -> Result<(), log::SetLoggerError> {
+
+    // Remove all log files in the log directory but not the directory it self.
+    let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
+    let target_dir = proj_dirs.cache_dir().parent().unwrap().join("logs");
+    match fs::remove_dir_all(&target_dir) {
+        Ok(_) => {
+            log::debug!("Log files removed.");
+        }
+        Err(e) => {
+            log::debug!("Log files not removed.");
+            log::debug!("Error: {}", e);
+        }
+    }
+
     if std::env::var("RUST_LOG") == Ok("debug".to_string()) {
         log::debug!("Debug mode is already enabled.");
         Ok(())
     } else {
         std::env::set_var("RUST_LOG", "debug");
         std::env::set_var("RUST_BACKTRACE", "1");
-
-        let proj_dirs = ProjectDirs::from("com", "genshin-paisitioning", "").unwrap();
-        // target_dir의 내용이 프로젝트 디렉토리의 Root가 된다.
-        let target_dir = proj_dirs.cache_dir().parent().unwrap().join("logs");
         
         // 파일 로거를 생성한다.
         // 패턴: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html

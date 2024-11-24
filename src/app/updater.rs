@@ -439,6 +439,47 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
     Ok(())
 }
 
+fn extract_files_with_extensions(
+    archive_path: &PathBuf,
+    mappings: HashMap<&str, &PathBuf>,
+) -> Result<()> {
+    // 압축 해제 시작
+    sevenz_rust::decompress_file_with_extract_fn(archive_path, "", |entry, reader, _| {
+        log::debug!("압축 해제할 파일명: {}", entry.name());
+        if let Some(ext) = PathBuf::from(entry.name())
+            .extension()
+            .and_then(|e| e.to_str())
+        {
+            if let Some(out_path) = mappings.get(ext) {
+                log::debug!("압축 해제 대상 경로: {:?}", out_path.to_str().unwrap());
+                let mut out_file_path = PathBuf::from(out_path.to_str().unwrap());
+                out_file_path = out_file_path.join(entry.name());
+
+                // create parent directories if necessary
+                if let Some(parent) = out_file_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+
+                log::debug!("start extract {:?}", out_file_path.to_str());
+                let r = default_entry_extract_fn(entry, reader, &out_file_path);
+
+                match r {
+                    Ok(_) => {
+                        log::debug!("done writing")
+                    }
+                    Err(err) => {
+                        log::debug!("Error: Failed to extract file.");
+                        log::debug!("{}", err);
+                    }
+                }
+            }
+        }
+        Ok(true)
+    })
+    .expect("complete");
+    Ok(())
+}
+
 // 클라이언트로부터 이벤트를 전송받았을 경우
 pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>, rx: Option<Receiver<AppEvent>>) -> Result<()> {
     let mut app_ready = true;
@@ -447,77 +488,30 @@ pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>
         log::info!("UPDATER LOOP!");
         match r.recv() {
             Ok(AppEvent::CheckAppUpdate(id)) => {
-                let app_config: AppConfig = config.clone().try_deserialize().unwrap();
-                if app_config.auto_app_update {
-                    match super::updater::download_app(tx.clone(), id.clone()) {
-                        Ok(_) => {
-                            log::debug!("App Ready!");
-                            app_ready = true;
-                        }
-                        Err(e) => {
-                            log::error!("{}", e);
-                            log::debug!("현재 버전을 계속 사용합니다!");
-                            match send_app_update_info(tx.clone(), id.clone(), None) {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    log::error!("{}", e);
-                                }   
-                            }
-                            app_ready = true;
-                        }
-                    }
-                } else {
-                    log::debug!("자동 업데이트가 꺼져있습니다.");
-                    log::debug!("현재 버전을 계속 사용합니다!");
-                    match send_app_update_info(tx.clone(), id.clone(), None) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            log::error!("{}", e);
-                        }   
-                    }
-                    app_ready = true;
-                }
+                let result = check_app_update(config.clone(), id.clone(), tx.clone());
                 
+                match result {
+                    Ok(_) => {
+                        app_ready = true;
+                    }
+                    Err(e) => {
+                        app_ready = true;
+                    }
+                }
                 if app_ready && lib_ready {
                     break;
                 }
             }
             Ok(AppEvent::CheckLibUpdate(id)) => {
-                let app_config: AppConfig = config.clone().try_deserialize().unwrap();
-                if app_config.auto_app_update {
-                    match super::updater::download_cvat(tx.clone(), id.clone()) {
-                        Ok(_) => {
-                            log::debug!("Lib Ready!");
-                            lib_ready = true;
-                        }
-                        Err(e) => {
-                            log::error!("{}", e);
-                            log::debug!("현재 버전을 계속 사용합니다!");
-                            match send_lib_update_info(tx.clone(), id.clone(), None) {
-                                Ok(_) => {},
-                                Err(e) => {
-                                    log::error!("{}", e);
-                                }
-                            }
-                            lib_ready = true;
-                        }
+                let result = check_lib_update(config.clone(), id.clone(), tx.clone());
+                match result {
+                    Ok(_) => {
+                        lib_ready = true;
                     }
-                    if app_ready && lib_ready {
-                        break;
+                    Err(e) => {
+                        lib_ready = true;
                     }
-                } else {
-                    log::debug!("자동 업데이트가 꺼져있습니다.");
-                    log::debug!("현재 버전을 계속 사용합니다!");
-                    match send_lib_update_info(tx.clone(), id, None) {
-                        Ok(_) => {},
-                        Err(e) => {
-                            log::error!("{}", e);
-                        }
-                    }
-
-                    lib_ready = true;
                 }
-
                 if app_ready && lib_ready {
                     break;
                 }
@@ -578,7 +572,7 @@ fn send_lib_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, u
         version_string = get_local_version(&lib_path);
 
         info = update_info.unwrap_or(UpdateInfo {
-            target_type: "lib".to_string(),
+            target_type: "cvat".to_string(),
             current_version: version_string,
             target_version: String::from(""),
             downloaded: 0,

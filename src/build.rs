@@ -20,7 +20,7 @@ fn main() {
             .set("FileDescription", env!("CARGO_PKG_DESCRIPTION"))
             .set_version_info(winres::VersionInfo::PRODUCTVERSION, version);
         
-            //res.set_manifest_file(resource_path.join("manifest.xml").to_str().unwrap());
+            res.set_manifest_file(resource_path.join("manifest.xml").to_str().unwrap());
             res.compile().unwrap();
     }
 }

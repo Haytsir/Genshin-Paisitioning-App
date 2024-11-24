@@ -16,7 +16,8 @@ use threadpool::ThreadPool;
 use log::*;
 
 fn main() {
-    if cfg!(debug_assertions) {
+    #[cfg(debug_assertions)]
+    {
         match app::enable_debug() {
             Ok(_) => log::debug!("Debug mode enable."),
             Err(e) => panic!("Debug mode enable failed. {}", e),
@@ -25,6 +26,7 @@ fn main() {
     }
     // 프로젝트 디렉토리에서 실행된 것이 아닐 경우,
     // 인스톨 과정을 거친다.
+    #[cfg(not(debug_assertions))]
     match app::check_proj_directory() {
         Ok(true) => {}
         Ok(false) => {
@@ -50,6 +52,9 @@ fn main() {
     }
 
     // 인자를 파싱한다.
+    #[cfg(debug_assertions)]
+    ready(["launch"].to_vec());
+    #[cfg(not(debug_assertions))]
     for a in std::env::args() {
         log::debug!("Argument: {}", a);
         if a.starts_with("genshin-paisitioning://") {

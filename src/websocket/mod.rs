@@ -85,10 +85,6 @@ pub async fn serve(sender: Sender<AppEvent>, receiver: Receiver<WsEvent>) {
         .or(publish)
         .with(cors);
 
-    // https://docs.rs/crate/tokio-tungstenite/0.10.1/source/examples/server.rs
-    // https://users.rust-lang.org/t/broadcast-server-what-is-the-best-way/88277/3
-    // https://stackoverflow.com/questions/60025114/how-to-run-futures-containing-borrowed-tcpstream-concurrently
-
     thread::spawn(move || {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         loop {

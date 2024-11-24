@@ -7,7 +7,6 @@ mod features;
 mod bindings;
 
 pub use self::features::*;
-pub use self::bindings::*;
 
 #[cfg(test)]
 mod test;
