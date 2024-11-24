@@ -216,7 +216,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
         let sender = sender.clone();
         let update_info = update_info.clone();
 
-        // github에서 받은 파일이 .7z 확장자인 경우
+        // github에서 받은 파일이 .zip 확장자인 경우
         if asset_name.ends_with(".zip") {
             // 파일 다운로드 및 저장
             let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -292,18 +292,15 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
 
     Ok(())
 }
-
 fn get_file_modified_time(file_path: &PathBuf) -> Result<std::time::SystemTime> {
     let metadata = std::fs::metadata(file_path)?;
     let modified_time = metadata.modified()?;
     Ok(modified_time)
 }
-
 fn parse_iso8601(date: &str) -> Result<std::time::SystemTime> {
     let datetime = chrono::DateTime::parse_from_rfc3339(date)?;
     Ok(datetime.into())
 }
-
 fn get_local_version(lib_path: &PathBuf) -> String {
     // TODO:
     log::debug!("{}", lib_path.to_str().unwrap());
@@ -439,45 +436,84 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
     Ok(())
 }
 
-fn extract_files_with_extensions(
-    archive_path: &PathBuf,
-    mappings: HashMap<&str, &PathBuf>,
-) -> Result<()> {
-    // 압축 해제 시작
-    sevenz_rust::decompress_file_with_extract_fn(archive_path, "", |entry, reader, _| {
-        log::debug!("압축 해제할 파일명: {}", entry.name());
-        if let Some(ext) = PathBuf::from(entry.name())
-            .extension()
-            .and_then(|e| e.to_str())
-        {
-            if let Some(out_path) = mappings.get(ext) {
-                log::debug!("압축 해제 대상 경로: {:?}", out_path.to_str().unwrap());
-                let mut out_file_path = PathBuf::from(out_path.to_str().unwrap());
-                out_file_path = out_file_path.join(entry.name());
-
-                // create parent directories if necessary
-                if let Some(parent) = out_file_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-
-                log::debug!("start extract {:?}", out_file_path.to_str());
-                let r = default_entry_extract_fn(entry, reader, &out_file_path);
-
-                match r {
+pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>) -> Result<()> {
+    let app_config: AppConfig = config.clone().try_deserialize().unwrap();
+    if app_config.auto_app_update {
+        let result = super::updater::download_app(tx.clone(), client_id.clone());
+        match result {
+            Ok(_) => {
+                log::debug!("App Ready!");
+                return result;
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                log::debug!("현재 버전을 계속 사용합니다!");
+                let tx_result = send_app_update_info(tx.clone(), client_id.clone(), None);
+                match tx_result {
                     Ok(_) => {
-                        log::debug!("done writing")
+                        return Err(e);
                     }
-                    Err(err) => {
-                        log::debug!("Error: Failed to extract file.");
-                        log::debug!("{}", err);
+                    Err(e) => {
+                        log::error!("{}", e);
+                        return Err(e);
                     }
                 }
             }
         }
-        Ok(true)
-    })
-    .expect("complete");
-    Ok(())
+    } else {
+        log::debug!("자동 업데이트가 꺼져있습니다.");
+        log::debug!("현재 버전을 계속 사용합니다!");
+        let result = send_app_update_info(tx.clone(), client_id.clone(), None);
+        match result {
+            Ok(_) => {
+                return result;
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(e);
+            }   
+        }
+    }
+}
+
+pub fn check_lib_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>) -> Result<()> {
+    let app_config: AppConfig = config.clone().try_deserialize().unwrap();
+    if app_config.auto_app_update {
+        let result = super::updater::download_cvat(tx.clone(), client_id.clone());
+        match result {
+            Ok(_) => {
+                log::debug!("Lib Ready!");
+                return result;
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                log::debug!("현재 버전을 계속 사용합니다!");
+                let result = send_lib_update_info(tx.clone(), client_id.clone(), None);
+                match result {
+                    Ok(_) => {
+                        return Err(e);
+                    }
+                    Err(e) => {
+                        log::error!("{}", e);
+                        return Err(e);
+                    }
+                }
+            }
+        }
+    } else {
+        log::debug!("자동 업데이트가 꺼져있습니다.");
+        log::debug!("현재 버전을 계속 사용합니다!");
+        let result = send_lib_update_info(tx.clone(), client_id.clone(), None);
+        match result {
+            Ok(_) => {
+                return result;
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(e);
+            }
+        }
+    }
 }
 
 // 클라이언트로부터 이벤트를 전송받았을 경우
