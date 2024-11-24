@@ -12,17 +12,57 @@ on:
 # Action 실행
 jobs:
   # Release 생성
-  create_release:
+  build:
     if: github.ref == 'refs/heads/master'
-    # Action 실행 환경: ubuntu-latest
+    # Action 실행 환경: windows-latest
     runs-on: windows-latest
+    # Action 실행 작업들
     steps:
-      # Action 실행전에 필요한 작업
       # 1. Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
+      # 2. Install Rust
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      # 3. Set up cargo cache
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: false
+      # 4. Build Rust Proeject as Release
+      - name: Build project
+        run: cargo build --release --locked
+      # 5. Compress Builded File
+      - name: compress
+        uses: thedoctor0/zip-release@0.7.5
         with:
-          fetch-depth: "0"
+          type: "zip"
+          filename: "genshin_paisitioning_app.zip"
+          path: "./target/release/genshin_paisitioning_app.exe"
+
+      - name: Upload parsed result file
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-result
+          path: ./genshin_paisitioning_app.zip
+  # Release에 Asset 업로드
+  upload_release_asset:
+    # Action 실행 환경: windows-latest
+    needs: build
+    runs-on: ubuntu-latest
+    # 빌드 Action 실행 후 릴리즈 배포 및 업로드 작업
+    steps:
+      # Action 실행전에 필요한 작업
+      # 1. Checkout code
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: parsed-result
+          path: .
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: 'Cargo.toml'
+          sparse-checkout-cone-mode: false
       - run: git fetch --all --tags
       # 2. Check Release Version
       - name: Check Release Version
@@ -43,42 +83,14 @@ jobs:
           name: Release ${{ steps.version_check.outputs.releaseVersion }}
           draft: false
           prerelease: false
+        # 4. Release Asset 업로드
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ steps.version_check.outputs.releaseVersion }}
+          tag_name: ${{ steps.version_check.outputs.releaseVersion }}
+          files: genshin_paisitioning_app.zip
     outputs:
       versionChanged: ${{ steps.version_check.outputs.versionChanged }}
       releaseVersion: ${{ steps.version_check.outputs.releaseVersion }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
-  # Release에 Asset 업로드
-  upload_release_asset:
-    # Action 실행 환경: windows-latest
-    needs: create_release
-    runs-on: windows-latest
-    if: ${{ needs.create_release.outputs.versionChanged }}
-    # Action 실행 작업들
-    steps:
-      # 1. Checkout code
-      - name: Checkout code
-        uses: actions/checkout@v3
-      # 2. Install Rust
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      # 3. Set up cargo cache
-      - name: Set up cargo cache
-        uses: Swatinem/rust-cache@v2
-        continue-on-error: false
-      # 4. Build Rust Proeject as Release
-      - name: Build project
-        run: cargo build --release --locked
-      # 5. Compress Builded File
-      - name: compress
-        uses: thedoctor0/zip-release@0.7.1
-        with:
-          type: "zip"
-          filename: "genshin_paisitioning_app.zip"
-          path: "./target/release/genshin_paisitioning_app.exe"
-      # 6. Upload Release Asset
-      - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
-        with:
-          name: ${{ needs.create_release.outputs.releaseVersion }}
-          tag_name: ${{ needs.create_release.outputs.releaseVersion }}
-          files: genshin_paisitioning_app.zip
