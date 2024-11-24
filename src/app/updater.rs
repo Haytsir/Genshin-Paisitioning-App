@@ -530,7 +530,7 @@ pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>
                     Ok(_) => {
                         app_ready = true;
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         app_ready = true;
                     }
                 }
@@ -544,7 +544,7 @@ pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>
                     Ok(_) => {
                         lib_ready = true;
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         lib_ready = true;
                     }
                 }

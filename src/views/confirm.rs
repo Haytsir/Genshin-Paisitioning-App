@@ -1,4 +1,4 @@
-pub fn confirm_dialog(title:&str, desc: &str, is_error: bool) -> bool {
+pub fn confirm_dialog(title:&str, desc: &str, is_error: bool) -> () {
     #[cfg(not(feature = "gtk3"))]
     let res = "";
     #[cfg(any(
@@ -21,4 +21,5 @@ pub fn confirm_dialog(title:&str, desc: &str, is_error: bool) -> bool {
         .set_buttons(rfd::MessageButtons::Ok)
         .set_level(if is_error{rfd::MessageLevel::Error}else{rfd::MessageLevel::Info})
         .show();
+
 }
