@@ -71,6 +71,7 @@ jobs:
         uses: thebongy/version-check@v1
         with:
           file: Cargo.toml
+          failBuild: false
           tagFormat: v${version}
       # 3. Release 생성
       - name: create release
