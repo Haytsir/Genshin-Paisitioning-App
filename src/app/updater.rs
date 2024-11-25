@@ -168,6 +168,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
     // 최신 릴리스 정보 가져오기
     let json: Value = fetch_app_version_on_github("Haytsir", "gpa-lib-mirror")?;
 
+    debug!("json: {:#?}", json);
     // 태그 이름 가져오기
     let version = get_local_version(&lib_path);
     let release_name = json["name"].as_str().unwrap_or("");
@@ -183,26 +184,28 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
         done: false,
         updated: true,
     };
-    
-    // 버전 비교, 최신 버전이 버전 숫자가 더 낮은 경우가 있으니 파일 수정 시간으로 비교
-    let last_file_modified = get_file_modified_time(&lib_path.join("cvAutoTrack.dll"))?;
-    let last_lib_published = parse_iso8601(json["published_at"].as_str().unwrap_or(""))?;
 
-    if last_file_modified > last_lib_published/* compare_versions(&version, json["tag_name"].as_str().unwrap_or("")) */ {
-        log::debug!("CVAT가 최신 버전입니다. ({})", release_name);
-        update_info.done = true;
-        update_info.updated = false;
-        // 처음 상황을 전송한다.
-        let _ = sender.unwrap().send(WsEvent::UpdateInfo(
-            update_info,
-            requester_id,
-        ));
-        return Ok(());
-    } else {
-        log::debug!(
-            "현재 CVAT 버전은 최신 버전 {}과 일치하지 않습니다.",
-            release_name
-        );
+    if lib_path.join("cvAutoTrack.dll").exists() {
+        // 버전 비교, 최신 버전이 버전 숫자가 더 낮은 경우가 있으니 파일 수정 시간으로 비교
+        let last_file_modified = get_file_modified_time(&lib_path.join("cvAutoTrack.dll"))?;
+        let last_lib_published = parse_iso8601(json["published_at"].as_str().unwrap_or(""))?;
+
+        if last_file_modified > last_lib_published/* compare_versions(&version, json["tag_name"].as_str().unwrap_or("")) */ {
+            log::debug!("CVAT가 최신 버전입니다. ({})", release_name);
+            update_info.done = true;
+            update_info.updated = false;
+            // 처음 상황을 전송한다.
+            let _ = sender.unwrap().send(WsEvent::UpdateInfo(
+                update_info,
+                requester_id,
+            ));
+            return Ok(());
+        } else {
+            log::debug!(
+                "현재 CVAT 버전은 최신 버전 {}과 일치하지 않습니다.",
+                release_name
+            );
+        }
     }
 
     // 첫 번째 첨부 파일 가져오기
@@ -241,6 +244,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
                     mappings.insert("dll", &target_path);
                     //                mappings.insert("md5", &lib_path);
                     //                mappings.insert("tag", &lib_path);
+                    std::fs::create_dir_all(lib_path.clone())?;
                     extract_files_from_zip(&arch_path, mappings)?;
                     Ok(())
                 });
@@ -262,8 +266,9 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
             // 파일 다운로드 및 저장
             let runtime = tokio::runtime::Runtime::new().unwrap();
             // arch_path: .7z 파일의 경로
-            let file_path = cache_dir.join(asset_name);
-            let target_path = lib_path.clone().join(asset_name);
+            let file_path = cache_dir.join(if asset_name.ends_with(".md5") {"cvAutoTrack.md5"} else {asset_name});
+            debug!("file_path: {:?}", file_path);
+            let target_path = lib_path.clone().join(if asset_name.ends_with(".md5") {"cvAutoTrack.md5"} else {asset_name}); // ? cvAutoTrack instead of asset_name
             let res = runtime.handle().block_on(download_file(
                 asset_url,
                 &file_path,
@@ -274,6 +279,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
 
             match res {
                 Ok(_) => {
+                    std::fs::create_dir_all(lib_path.clone())?;
                     std::fs::rename(file_path, target_path)?;
                 }
                 Err(e) => {
@@ -440,15 +446,11 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
 
 pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>) -> Result<()> {
     debug!("check_app_update");
-    let app_config: AppConfig = config.clone().try_deserialize().unwrap_or(AppConfig {
-        auto_app_update: true,
-        auto_lib_update: true,
-        capture_interval: 250,
-        capture_delay_on_error: 1000,
-        use_bit_blt_capture_mode: false,
-        changed: None,
-    });
-    debug!("app_config: {:?}", app_config);
+    let app_config: AppConfig = config.clone().try_deserialize().map_err(|e| {
+        log::error!("{}", e);
+        Box::<dyn std::error::Error + Send + Sync>::from(e)
+    })?;
+    log::debug!("app_config: {:?}", app_config);
     if app_config.auto_app_update {
         let result = download_app(tx.clone(), client_id.clone());
         match result {
