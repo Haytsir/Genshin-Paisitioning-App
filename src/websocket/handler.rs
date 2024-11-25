@@ -176,6 +176,13 @@ pub fn ws_event_handler(mut config: config::Config, tx: Option<Sender<WsEvent>>,
             Ok(AppEvent::CheckLibUpdate(id)) => {
                 debug!("Got CheckLibUpdate in Event Handler");
                 let result = crate::app::updater::check_lib_update(config.clone(), id.clone(), tx.clone());
+                match result {
+                    Ok(_) => {}
+                    Err(e) => {
+                        log::error!("Updater: 업데이트 실패");
+                        return Err(warp::reject::custom(CustomError::UPDATE_FAILED));
+                    }
+                }
             }
             Ok(AppEvent::Init()) => {
                 debug!("Got Init in Event Handler");

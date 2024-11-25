@@ -15,7 +15,7 @@ impl Clone for AppInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy)]
-#[serde(rename_all = "camelCase")]
+//#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     pub auto_app_update: bool,
     pub auto_lib_update: bool,

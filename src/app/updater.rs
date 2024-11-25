@@ -67,7 +67,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
 
     // 버전 비교
     if compare_versions(version, &json["tag_name"].as_str().unwrap_or("")) {
-        log::debug!("현재 GPA 버전이 최신 버전 {}과 일치합니다.", release_name);
+        log::debug!("GPA가 최신 버전입니다. ({})", release_name);
         update_info.done = true;
         update_info.updated = false;
         // 처음 상황을 전송한다.
@@ -189,7 +189,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
     let last_lib_published = parse_iso8601(json["published_at"].as_str().unwrap_or(""))?;
 
     if last_file_modified > last_lib_published/* compare_versions(&version, json["tag_name"].as_str().unwrap_or("")) */ {
-        log::debug!("현재 CVAT 버전이 최신 버전 {}과 일치합니다.", release_name);
+        log::debug!("CVAT가 최신 버전입니다. ({})", release_name);
         update_info.done = true;
         update_info.updated = false;
         // 처음 상황을 전송한다.
@@ -488,7 +488,12 @@ pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Se
 }
 
 pub fn check_lib_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>) -> Result<()> {
-    let app_config: AppConfig = config.clone().try_deserialize().unwrap();
+    //let app_config: std::result::Result<AppConfig, config::ConfigError>  = config.clone().try_deserialize();
+    let app_config: AppConfig = config.clone().try_deserialize().map_err(|e| {
+        log::error!("{}", e);
+        Box::<dyn std::error::Error + Send + Sync>::from(e)
+    })?;
+    log::debug!("app_config: {:?}", app_config);
     if app_config.auto_app_update {
         let result = super::updater::download_cvat(tx.clone(), client_id.clone());
         match result {
