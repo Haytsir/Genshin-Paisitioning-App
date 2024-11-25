@@ -81,68 +81,7 @@ pub fn stop_track_thread(cvat: &cvAutoTrack /*sender: Option<Sender<WsEvent>>*/)
     false
 }
 
-// 클라이언트로부터 이벤트를 전송받았을 경우
-pub fn cvat_event_handler(
-    mut config: Config,
-    tx: Option<Sender<WsEvent>>,
-    rx: Option<Receiver<AppEvent>>,
-) {
-    while let Some(r) = rx.as_ref() {
-        log::info!("LIB LOOP!");
-        let res = r.recv();
-        match res {
-            Ok(AppEvent::Init()) => {
-                let app_config: AppConfig = config.clone().try_deserialize().unwrap();
-                set_capture_interval(u64::from(app_config.capture_interval));
-                set_capture_delay_on_error(u64::from(app_config.capture_delay_on_error));
-                log::debug!("Got Init");
-                start_track_thead(tx.clone(), app_config.use_bit_blt_capture_mode);
-            }
-            Ok(AppEvent::Uninit()) => {
-                log::debug!("Got Uninit");
-                set_is_tracking(false);
-                // stop_track_thread(cvat/*tx.clone()*/);
-            }
-            Ok(AppEvent::GetConfig(id)) => {
-                log::debug!("Got GetConfig");
-                if let Some(t) = tx.as_ref() {
-                    let app_config: AppConfig = config.clone().try_deserialize().unwrap();
-                    t.send(WsEvent::Config(app_config, id)).unwrap();
-                }
-            }
-            Ok(AppEvent::SetConfig(mut new_app_config, id)) => {
-                log::debug!("Got SetConfig");
-                if let Some(t) = tx.as_ref() {
-                    let new_config = Config::builder()
-                        .add_source(config.clone())
-                        .set_override("captureInterval", new_app_config.capture_interval)
-                        .expect("Failed to set overide")
-                        .set_override("captureDelayOnError", new_app_config.capture_delay_on_error)
-                        .expect("Failed to set overide")
-                        .set_override(
-                            "useBitBltCaptureMode",
-                            new_app_config.use_bit_blt_capture_mode,
-                        )
-                        .expect("Failed to set overide")
-                        .build()
-                        .unwrap();
-                    on_config_changed(config.clone(), new_config.clone());
-                    config = new_config;
-                    new_app_config.changed = Some(true);
-                    t.send(WsEvent::Config(new_app_config, id)).unwrap();
-                }
-            }
-            Ok(_) => {
-                log::error!("Unknown: {:#?}", res);
-            }
-            Err(e) => {
-                log::error!("Unknown: {}", e);
-            } //panic!("panic happened"),
-        }
-    }
-}
-
-fn on_config_changed(config: Config, new_config: Config) {
+pub fn on_config_changed(config: Config, new_config: Config) {
     let old_app_config: AppConfig = config.try_deserialize().unwrap();
     let mut new_app_config: AppConfig = new_config.try_deserialize().unwrap();
     if new_app_config.capture_interval < 100 {

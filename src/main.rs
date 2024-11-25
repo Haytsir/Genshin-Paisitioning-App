@@ -8,9 +8,8 @@ mod models;
 mod websocket;
 mod views;
 
-use app::{is_process_already_running, updater::updater_event_handler, path};
+use app::{is_process_already_running, path};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use cvat::cvat_event_handler;
 use crate::views::confirm::confirm_dialog;
 use models::{AppEvent, WsEvent};
 use threadpool::ThreadPool;
@@ -20,14 +19,16 @@ fn main() {
     #[cfg(debug_assertions)]
     {
         match app::enable_debug() {
-            Ok(_) => log::debug!("Debug mode enable."),
+            Ok(_) => {
+                debug!("Debug mode enable.");
+                debug!("App Version: {}", env!("CARGO_PKG_VERSION"));
+            },
             Err(e) => panic!("Debug mode enable failed. {}", e),
         }
         log::debug!("Logging debug messages.");
     }
     // 프로젝트 디렉토리에서 실행된 것이 아닐 경우,
     // 인스톨 과정을 거친다.
-    #[cfg(not(debug_assertions))]
     match app::check_proj_directory() {
         Ok(true) => {}
         Ok(false) => {
@@ -47,13 +48,17 @@ fn main() {
     }
 
     if is_process_already_running() {
+        let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), &format!("GPA가 이미 실행중입니다.\n추가로 실행된 프로그램은 잠시 후 종료됩니다."), true);
+        std::thread::sleep(std::time::Duration::from_millis(5000));
         return;
     }
 
     // 인자를 파싱한다.
     #[cfg(debug_assertions)]
-    ready(["launch"].to_vec());
-    #[cfg(not(debug_assertions))]
+    {
+        ready(["launch"].to_vec());
+    }
+    
     for a in std::env::args() {
         log::debug!("Argument: {}", a);
         if a.starts_with("genshin-paisitioning://") {
@@ -64,8 +69,14 @@ fn main() {
         } else {
             if a.eq("--debug") || a.eq("-d") {
                 match app::enable_debug() {
-                    Ok(_) => log::debug!("Debug mode enable."),
-                    Err(e) => panic!("Debug mode enable failed. {}", e),
+                    Ok(_) => {
+                        debug!("Debug mode enable.");
+                        debug!("App Version: {}", env!("CARGO_PKG_VERSION"));
+                    },
+                    Err(e) => {
+                        let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), &format!("디버그 모드 설정에 실패했습니다.\n{}", e.to_string()), true);
+                        panic!("Debug mode enable failed. {}", e)
+                    },
                 }
                 log::debug!("Logging debug messages.");
             }
@@ -74,6 +85,7 @@ fn main() {
                 match app::installer::install() {
                     Ok(_) => {},
                     Err(e) => {
+                        let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), &format!("인스톨 파라메터 수행 중 실패했습니다.\n{}", e.to_string()), true);
                         log::error!("Error: {}", e);
                     }
                 }
@@ -113,7 +125,10 @@ fn ready(param: Vec<&str>) {
 
     if param.contains(&"debug") {
         match app::enable_debug() {
-            Ok(_) => log::debug!("Debug mode enable."),
+            Ok(_) => {
+                debug!("Debug mode enable.");
+                debug!("App Version: {}", env!("CARGO_PKG_VERSION"));
+            },
             Err(e) => panic!("Debug mode enable failed. {}", e),
         }
     }
@@ -131,23 +146,7 @@ fn ready(param: Vec<&str>) {
         // Ws과 Cvat Library의 연동 핸들러 시작
         pool.execute(move || {
             log::debug!("start ws handler");
-            let updater_handler_sender = ws_sender.clone();
-            let updater_handler_receiver = cvat_receiver.clone();
-            match updater_event_handler(config.clone(), Some(updater_handler_sender), Some(updater_handler_receiver)) {
-                Ok(_) => {
-                    let cvat_handler_sender = ws_sender.clone();
-                    let cvat_handler_receiver = cvat_receiver.clone();
-                    cvat_event_handler(
-                        config.clone(),
-                        Some(cvat_handler_sender),
-                        Some(cvat_handler_receiver),
-                    );
-                },
-                Err(e) => {
-                    log::error!("Error: {}", e);
-                    panic!("Updater event handler failed. {}", e);
-                }                
-            }
+            websocket::handler::ws_event_handler(config.clone(), Some(ws_sender.clone()), Some(cvat_receiver.clone()));
         });
 
         // 트레이 아이콘 추가

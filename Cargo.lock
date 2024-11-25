@@ -231,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "async-signal"
-version = "0.2.10"
+version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "637e00349800c0bdf8bfc21ebbc0b6524abea702b0da4168ac00d070d0c0b9f3"
 dependencies = [
@@ -1112,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "genshin_paisitioning_app"
-version = "1.1.11"
+version = "1.1.7"
 dependencies = [
  "chrono",
  "config",

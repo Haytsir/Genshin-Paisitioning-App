@@ -9,7 +9,7 @@ use warp::{ws::Message, Filter, Rejection};
 use crate::models::{AppEvent, WsEvent};
 use std::thread;
 
-mod handler;
+pub(crate) mod handler;
 mod ws;
 
 type Result<T> = std::result::Result<T, Rejection>;

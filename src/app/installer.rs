@@ -16,6 +16,15 @@ pub fn install() -> Result<(), std::io::Error>{
     if check_elevation(&target_dir.join(exe_name), vec!["--install".to_string()]) {
         log::debug!("Installing...");
         let exe_path = &target_dir.join(exe_name);
+        let result = std::fs::copy(&current_exe, &target_dir.join(exe_name));
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Error: {}", e);
+                let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), &format!("GPA 설치에 실패했습니다.\n실행 파일 복사에 실패했습니다.\n{}", e.to_string()), true);
+                return Err(e.into());
+            }
+        }
         let result = register_url_scheme(exe_path);
         match result {
             Ok(_) => {}
@@ -44,6 +53,7 @@ pub fn install() -> Result<(), std::io::Error>{
             }
         }
         let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 완료했습니다.", false);
+        let _ = self_replace::self_delete();
         std::thread::sleep(Duration::from_millis(5000));
     } else {
         let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 설치를 취소했습니다.\n관리자 권한이 필요합니다.", true);

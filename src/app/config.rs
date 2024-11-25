@@ -1,4 +1,4 @@
-use config::Config;
+use config::{Config, FileFormat};
 use std::error::Error;
 use std::path::PathBuf;
 use crate::app::path;
@@ -14,22 +14,22 @@ pub fn init_config() -> Result<Config, std::io::Error> {
             log::error!("Project Directory: 생성 실패");
             log::error!("Error: {}", e);
         }
-        
     }
-    match create_config_file_if_not_exist(&target_dir.join("config.json"))
+    /* match create_config_file_if_not_exist(&target_dir.join("config.json"))
     {
         Ok(_) => {},
         Err(e) => {
             log::error!("Config File: 생성 실패");
             log::error!("Error: {}", e);
         }
-    }
+    } */
 
     let settings = Config::builder()
-        .add_source(config::File::with_name(
+        .add_source(config::File::new(target_dir.join("config.json").to_str().unwrap(), FileFormat::Json))
+        /* .add_source(config::File::with_name(
             target_dir.join("config.json").to_str().unwrap(),
-        ))
-        .add_source(config::Environment::with_prefix("APP"))
+        )) */
+        .add_source(config::Environment::with_prefix("gpa").separator("_"))
         .build();
     
     match settings {

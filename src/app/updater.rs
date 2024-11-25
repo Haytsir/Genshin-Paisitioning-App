@@ -1,3 +1,5 @@
+use crossbeam_channel::Sender;
+use log::debug;
 use reqwest::blocking::Client;
 use serde_json::Value;
 use crate::app::terminate_process;
@@ -5,7 +7,6 @@ use crate::app::terminate_process;
 use crate::models::{WsEvent, AppConfig};
 use crate::models::{AppEvent, UpdateInfo};
 use crate::views::confirm::confirm_dialog;
-use crossbeam_channel::{Receiver, Sender};
 use crate::app::path;
 use std::collections::HashMap;
 use std::fs::{File, self};
@@ -14,25 +15,40 @@ use std::time::Duration;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Result<()> {
-    let owner = "Haytsir";
-    let repo: &str = "Genshin-Paisitioning-App";
-
-    let cache_dir = path::get_cache_path();
-
+fn fetch_app_version_on_github(owner: &str, repo: &str) -> Result<Value> {
+    debug!("fetch_app_version_on_github");
     // 최신 릴리스 정보 가져오기
     let client = Client::new();
     let url = format!(
         "https://api.github.com/repos/{}/{}/releases/latest",
         owner, repo
     );
-    let response = client.get(&url).header("User-Agent", "reqwest").send()?;
+    let response = client.get(&url)
+                                    .header("User-Agent", "reqwest")
+                                    .header("Accept", "application/vnd.github.v3+json")
+                                    .header("Content-Type", "application/json")
+                                    .send()?;
     log::debug!("{:#?}", &response.status());
     if response.status().as_u16() > 400 {
-        return Err(format!("Error: Github API 요청에 실패했습니다: {}", &response.text()?).try_into().unwrap());
+        let e = format!("Error: Github API 요청에 실패했습니다: {}", &response.text()?);
+        return Err(e.into());
     }
-    let json: Value = serde_json::from_str(&response.text()?)?;
-    
+    let json: serde_json::Result<Value> = serde_json::from_str(&response.text()?);
+    match json {
+        Ok(json) => {
+            let version = json["tag_name"].as_str().unwrap();
+            Ok(json)
+        }
+        Err(e) => {
+            log::error!("{}", e);
+            Err(e.into())
+        }
+    }
+}
+pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Result<()> {
+    debug!("download_app");
+    let json: Value = fetch_app_version_on_github("Haytsir", "Genshin-Paisitioning-App")?;
+    let cache_dir = path::get_cache_path();
     // 태그 이름 가져오기
     let version = env!("CARGO_PKG_VERSION");
     let release_name = &json["name"].as_str().unwrap_or("")[1..];
@@ -126,7 +142,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
                         update_info,
                         requester_id.clone(),
                     ));
-                    
+
                     std::thread::sleep(Duration::from_millis(1000));
                     terminate_process();
                 }
@@ -140,8 +156,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
 }
 
 pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> Result<()> {
-    let owner = "Haytsir"; // GitHub 저장소 소유자 이름
-    let repo: &str = "gpa-lib-mirror"; // GitHub 저장소 이름
+    debug!("download_cvat");
     let lib_path = std::env::current_exe()
         .unwrap()
         .parent()
@@ -151,17 +166,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
     let cache_dir = path::get_cache_path();
 
     // 최신 릴리스 정보 가져오기
-    let client = Client::new();
-    let url = format!(
-        "https://api.github.com/repos/{}/{}/releases/latest",
-        owner, repo
-    );
-    let response = client.get(&url)
-                                    .header("User-Agent", "reqwest")
-                                    .header("Accept", "application/vnd.github.v3+json")
-                                    .header("Content-Type", "application/json")
-                                    .send()?;
-    let json: Value = serde_json::from_str(&response.text()?)?;
+    let json: Value = fetch_app_version_on_github("Haytsir", "gpa-lib-mirror")?;
 
     // 태그 이름 가져오기
     let version = get_local_version(&lib_path);
@@ -308,6 +313,9 @@ fn get_local_version(lib_path: &PathBuf) -> String {
 }
 
 pub fn compare_versions(version: &str, release_name: &str) -> bool {
+    debug!("compare_versions({}, {})", version, release_name);
+    let version = version.trim_start_matches('v');
+    let release_name = release_name.trim_start_matches('v');
     let latest_version = release_name.trim();
     if version.eq(latest_version) {
         return true;
@@ -431,9 +439,18 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
 }
 
 pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>) -> Result<()> {
-    let app_config: AppConfig = config.clone().try_deserialize().unwrap();
+    debug!("check_app_update");
+    let app_config: AppConfig = config.clone().try_deserialize().unwrap_or(AppConfig {
+        auto_app_update: true,
+        auto_lib_update: true,
+        capture_interval: 250,
+        capture_delay_on_error: 1000,
+        use_bit_blt_capture_mode: false,
+        changed: None,
+    });
+    debug!("app_config: {:?}", app_config);
     if app_config.auto_app_update {
-        let result = super::updater::download_app(tx.clone(), client_id.clone());
+        let result = download_app(tx.clone(), client_id.clone());
         match result {
             Ok(_) => {
                 log::debug!("App Ready!");
@@ -507,60 +524,6 @@ pub fn check_lib_update(config: config::Config, client_id: String, tx: Option<Se
                 return Err(e);
             }
         }
-    }
-}
-
-// 클라이언트로부터 이벤트를 전송받았을 경우
-pub fn updater_event_handler(config: config::Config, tx: Option<Sender<WsEvent>>, rx: Option<Receiver<AppEvent>>) -> Result<()> {
-    let mut app_ready = true;
-    let mut lib_ready = false;
-    while let Some(r) = rx.as_ref() {
-        log::info!("UPDATER LOOP!");
-        match r.recv() {
-            Ok(AppEvent::CheckAppUpdate(id)) => {
-                let result = check_app_update(config.clone(), id.clone(), tx.clone());
-                
-                match result {
-                    Ok(_) => {
-                        app_ready = true;
-                    }
-                    Err(_e) => {
-                        app_ready = true;
-                    }
-                }
-                if app_ready && lib_ready {
-                    break;
-                }
-            }
-            Ok(AppEvent::CheckLibUpdate(id)) => {
-                let result = check_lib_update(config.clone(), id.clone(), tx.clone());
-                match result {
-                    Ok(_) => {
-                        lib_ready = true;
-                    }
-                    Err(_e) => {
-                        lib_ready = true;
-                    }
-                }
-                if app_ready && lib_ready {
-                    break;
-                }
-            }
-            Ok(_) => {
-                log::error!("Unknown: {:#?}", r.recv());
-            }
-            Err(e) => {
-                log::error!("Unknown: {}", e);
-                return Err(e.try_into().unwrap());
-            } //panic!("panic happened"),
-        }
-    }
-    match app_ready && lib_ready {
-        true => Ok(()),
-        false => {
-            log::error!("Updater: 업데이트 실패");
-            return Err("Updater: 업데이트 실패".try_into().unwrap());
-        },
     }
 }
 
