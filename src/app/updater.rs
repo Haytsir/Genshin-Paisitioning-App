@@ -669,30 +669,3 @@ fn send_lib_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, u
         }
     }
 }
-
-// 수동 캐시 갱신 함수 추가
-pub fn force_update_github_cache(owner: &str, repo: &str) -> Result<()> {
-    debug!("Forcing GitHub cache update for {}/{}", owner, repo);
-    
-    let client = Client::new();
-    let url = format!(
-        "https://api.github.com/repos/{}/{}/releases/latest",
-        owner, repo
-    );
-    let response = client.get(&url)
-        .header("User-Agent", "reqwest")
-        .header("Accept", "application/vnd.github.v3+json")
-        .header("Content-Type", "application/json")
-        .send()?;
-        
-    if response.status().as_u16() != 200 {
-        let e = format!("Error: Github API 요청에 실패했습니다: {}", &response.text()?);
-        return Err(e.into());
-    }
-    
-    let json: Value = serde_json::from_str(&response.text()?)?;
-    save_to_cache(owner, repo, &json)?;
-    
-    debug!("GitHub cache successfully updated");
-    Ok(())
-}
