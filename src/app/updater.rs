@@ -12,52 +12,118 @@ use std::collections::HashMap;
 use std::fs::{File, self};
 use std::path::PathBuf;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
+use serde::{Serialize, Deserialize};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-fn fetch_app_version_on_github(owner: &str, repo: &str) -> Result<Value> {
+#[derive(Debug, Serialize, Deserialize)]
+struct GithubCache {
+    timestamp: u64,
+    data: Value,
+}
+
+impl GithubCache {
+    fn is_valid(&self) -> bool {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        // 24시간(86400초) 이내의 캐시만 유효
+        now - self.timestamp < 86400
+    }
+}
+
+fn get_cache_file_path(owner: &str, repo: &str) -> PathBuf {
+    path::get_cache_path().join(format!("github_{}_{}.cache", owner, repo))
+}
+
+fn save_to_cache(owner: &str, repo: &str, data: &Value) -> Result<()> {
+    let cache = GithubCache {
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        data: data.clone(),
+    };
+    
+    let cache_path = get_cache_file_path(owner, repo);
+    let cache_dir = cache_path.parent().unwrap();
+    std::fs::create_dir_all(cache_dir)?;
+    
+    let cache_str = serde_json::to_string(&cache)?;
+    std::fs::write(cache_path, cache_str)?;
+    Ok(())
+}
+
+fn load_from_cache(owner: &str, repo: &str) -> Result<Option<Value>> {
+    let cache_path = get_cache_file_path(owner, repo);
+    if !cache_path.exists() {
+        return Ok(None);
+    }
+
+    let cache_str = std::fs::read_to_string(cache_path)?;
+    let cache: GithubCache = serde_json::from_str(&cache_str)?;
+    
+    if cache.is_valid() {
+        Ok(Some(cache.data))
+    } else {
+        Ok(None)
+    }
+}
+
+fn fetch_app_version_on_github(owner: &str, repo: &str, force: bool) -> Result<Value> {
     debug!("fetch_app_version_on_github");
-    // 최신 릴리스 정보 가져오기
+    
+    // 캐시 확인
+    if !force {
+        if let Some(cached_data) = load_from_cache(owner, repo)? {
+            debug!("Using cached GitHub API response");
+            return Ok(cached_data);
+        }
+    }
+
+    // 캐시가 없거나 만료된 경우 GitHub API 호출
     let client = Client::new();
     let url = format!(
         "https://api.github.com/repos/{}/{}/releases/latest",
         owner, repo
     );
     let response = client.get(&url)
-                                    .header("User-Agent", "reqwest")
-                                    .header("Accept", "application/vnd.github.v3+json")
-                                    .header("Content-Type", "application/json")
-                                    .send()?;
+        .header("User-Agent", "reqwest")
+        .header("Accept", "application/vnd.github.v3+json")
+        .header("Content-Type", "application/json")
+        .send()?;
+        
     log::debug!("{:#?}", &response.status());
-    if response.status().as_u16() > 400 {
+    if response.status().as_u16() != 200 {
         let e = format!("Error: Github API 요청에 실패했습니다: {}", &response.text()?);
         return Err(e.into());
     }
-    let json: serde_json::Result<Value> = serde_json::from_str(&response.text()?);
-    match json {
-        Ok(json) => {
-            let version = json["tag_name"].as_str().unwrap();
-            Ok(json)
-        }
-        Err(e) => {
-            log::error!("{}", e);
-            Err(e.into())
-        }
-    }
+    
+    let json: Value = serde_json::from_str(&response.text()?)?;
+    
+    // 응답 캐시에 저장
+    save_to_cache(owner, repo, &json)?;
+    
+    Ok(json)
 }
+
 pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Result<()> {
     debug!("download_app");
-    let json: Value = fetch_app_version_on_github("Haytsir", "Genshin-Paisitioning-App")?;
+    let json: Value = fetch_app_version_on_github("Haytsir", "Genshin-Paisitioning-App", false)?;
     let cache_dir = path::get_cache_path();
     // 태그 이름 가져오기
     let version = env!("CARGO_PKG_VERSION");
-    let release_name = &json["name"].as_str().unwrap_or("")[1..];
+    let release_name = &json["tag_name"].as_str().unwrap_or("")[1..];
+    let release_display_name = &json["name"].as_str().unwrap_or("");
 
     // 업데이트를 요청한 유저에게 보낼 update info 생성
     let mut update_info = UpdateInfo {
         target_type: "app".to_string(),
         current_version: version.to_string(),
         target_version: release_name.to_string(),
+        display_version_name: release_display_name.to_string(),
         downloaded: 0,
         file_size: 0,
         percent: 0.0,
@@ -166,18 +232,20 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
     let cache_dir = path::get_cache_path();
 
     // 최신 릴리스 정보 가져오기
-    let json: Value = fetch_app_version_on_github("Haytsir", "gpa-lib-mirror")?;
+    let json: Value = fetch_app_version_on_github("Haytsir", "gpa-lib-mirror", false)?;
 
     debug!("json: {:#?}", json);
     // 태그 이름 가져오기
     let version = get_local_version(&lib_path);
-    let release_name = json["name"].as_str().unwrap_or("");
+    let release_name = json["tag_name"].as_str().unwrap_or("");
+    let release_display_name = json["name"].as_str().unwrap_or("");
 
     // 업데이트를 요청한 유저에게 보낼 update info 생성
     let mut update_info = UpdateInfo {
         target_type: "cvat".to_string(),
         current_version: version.to_string(),
         target_version: release_name.to_string(),
+        display_version_name: release_display_name.to_string(),
         downloaded: 0,
         file_size: 0,
         percent: 0.0,
@@ -444,7 +512,7 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
     Ok(())
 }
 
-pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>) -> Result<()> {
+pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>, force: bool) -> Result<()> {
     debug!("check_app_update");
     let app_config: AppConfig = config.clone().try_deserialize().map_err(|e| {
         log::error!("{}", e);
@@ -489,7 +557,7 @@ pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Se
     }
 }
 
-pub fn check_lib_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>) -> Result<()> {
+pub fn check_lib_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>, force: bool) -> Result<()> {
     //let app_config: std::result::Result<AppConfig, config::ConfigError>  = config.clone().try_deserialize();
     let app_config: AppConfig = config.clone().try_deserialize().map_err(|e| {
         log::error!("{}", e);
@@ -541,6 +609,7 @@ fn send_app_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, u
         target_type: "app".to_string(),
         current_version: env!("CARGO_PKG_VERSION").to_string(),
         target_version: String::from(""),
+        display_version_name: String::from(""),
         downloaded: 0,
         file_size: 0,
         percent: 0.0,
@@ -575,6 +644,7 @@ fn send_lib_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, u
             target_type: "cvat".to_string(),
             current_version: version_string,
             target_version: String::from(""),
+            display_version_name: String::from(""),
             downloaded: 0,
             file_size: 0,
             percent: 0.0,
@@ -596,4 +666,31 @@ fn send_lib_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, u
             Err(e.try_into().unwrap())
         }
     }
+}
+
+// 수동 캐시 갱신 함수 추가
+pub fn force_update_github_cache(owner: &str, repo: &str) -> Result<()> {
+    debug!("Forcing GitHub cache update for {}/{}", owner, repo);
+    
+    let client = Client::new();
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        owner, repo
+    );
+    let response = client.get(&url)
+        .header("User-Agent", "reqwest")
+        .header("Accept", "application/vnd.github.v3+json")
+        .header("Content-Type", "application/json")
+        .send()?;
+        
+    if response.status().as_u16() != 200 {
+        let e = format!("Error: Github API 요청에 실패했습니다: {}", &response.text()?);
+        return Err(e.into());
+    }
+    
+    let json: Value = serde_json::from_str(&response.text()?)?;
+    save_to_cache(owner, repo, &json)?;
+    
+    debug!("GitHub cache successfully updated");
+    Ok(())
 }

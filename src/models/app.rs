@@ -35,6 +35,7 @@ impl Clone for AppConfig {
 pub struct UpdateInfo {
     pub target_type: String,
     pub target_version: String,
+    pub display_version_name: String,
     pub current_version: String,
     pub downloaded: u64,
     pub file_size: u64,
@@ -51,6 +52,6 @@ pub enum AppEvent {
     Uninit(),
     GetConfig(String),
     SetConfig(AppConfig, String),
-    CheckLibUpdate(String),
-    CheckAppUpdate(String),
+    CheckLibUpdate(String, bool),
+    CheckAppUpdate(String, bool),
 }

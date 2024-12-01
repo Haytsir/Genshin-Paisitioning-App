@@ -99,6 +99,7 @@ fn client_msg(id: &str, msg: Message, _clients: &Clients, sender: Sender<AppEven
                     let _ = sender.send(AppEvent::SetConfig(app_config, id.to_string()));
                     return;
                 }
+                Some(_) => return,
                 None => {
                     log::error!("setConfig: None Data");
                     return;
@@ -107,7 +108,12 @@ fn client_msg(id: &str, msg: Message, _clients: &Clients, sender: Sender<AppEven
         }
         "checkAppUpdate" => {
             log::debug!("checkAppUpdate!");
-            let res = sender.send(AppEvent::CheckAppUpdate(id.to_string()));
+            let force = match req.data {
+                Some(RequestDataTypes::CheckAppUpdate(force)) => force,
+                Some(_) => false,
+                None => false,
+            };
+            let res = sender.send(AppEvent::CheckAppUpdate(id.to_string(), force));
             match res {
                 Ok(_) => {}
                 Err(e) => {
@@ -117,7 +123,12 @@ fn client_msg(id: &str, msg: Message, _clients: &Clients, sender: Sender<AppEven
         }
         "checkLibUpdate" => {
             log::debug!("checkLibUpdate!");
-            let res = sender.send(AppEvent::CheckLibUpdate(id.to_string()));
+            let force = match req.data {
+                Some(RequestDataTypes::CheckLibUpdate(force)) => force,
+                Some(_) => false,
+                None => false,
+            };
+            let res = sender.send(AppEvent::CheckLibUpdate(id.to_string(), force));
             match res {
                 Ok(_) => {}
                 Err(e) => {

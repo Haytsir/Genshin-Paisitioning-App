@@ -49,4 +49,6 @@ pub struct RequestEvent {
 #[derive(Debug, Clone)]
 pub enum RequestDataTypes {
     AppConfig(AppConfig),
+    CheckAppUpdate(bool),
+    CheckLibUpdate(bool),
 }

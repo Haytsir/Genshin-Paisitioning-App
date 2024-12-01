@@ -162,9 +162,9 @@ pub fn ws_event_handler(mut config: config::Config, tx: Option<Sender<WsEvent>>,
     while let Some(r) = rx.as_ref() {
         let res = r.recv();
         match res {
-            Ok(AppEvent::CheckAppUpdate(id)) => {
+            Ok(AppEvent::CheckAppUpdate(id, force)) => {
                 debug!("Got CheckAppUpdate in Event Handler");
-                let result = crate::app::updater::check_app_update(config.clone(), id.clone(), tx.clone());
+                let result = crate::app::updater::check_app_update(config.clone(), id.clone(), tx.clone(), force);
                 match result {
                     Ok(_) => {}
                     Err(e) => {
@@ -173,9 +173,9 @@ pub fn ws_event_handler(mut config: config::Config, tx: Option<Sender<WsEvent>>,
                     }
                 }
             } 
-            Ok(AppEvent::CheckLibUpdate(id)) => {
+            Ok(AppEvent::CheckLibUpdate(id, force)) => {
                 debug!("Got CheckLibUpdate in Event Handler");
-                let result = crate::app::updater::check_lib_update(config.clone(), id.clone(), tx.clone());
+                let result = crate::app::updater::check_lib_update(config.clone(), id.clone(), tx.clone(), force);
                 match result {
                     Ok(_) => {}
                     Err(e) => {
