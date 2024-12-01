@@ -15,29 +15,42 @@ use crossbeam_channel::{Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 use threadpool::ThreadPool;
+use libloading::Library;
 
 static THREAD_POOL: OnceCell<Mutex<ThreadPool>> = OnceCell::new();
 static IS_TRACKING: OnceCell<Mutex<bool>> = OnceCell::new();
 static CAPTURE_INTERVAL: OnceCell<Mutex<u64>> = OnceCell::new();
 static CAPTURE_DELAY_ON_ERROR: OnceCell<Mutex<u64>> = OnceCell::new();
+static CVAT_INSTANCE: OnceCell<Mutex<Option<(cvAutoTrack, Library)>>> = OnceCell::new();
+
+impl Clone for cvAutoTrack {
+    fn clone(&self) -> Self {
+        unsafe { cvAutoTrack::new("cvAutoTrack.dll").unwrap() }
+    }
+}
 
 pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> bool {
-    let cvat: cvAutoTrack;
-
-    match set_lib_directory() {
-        Ok(_) => {
-            cvat = unsafe{ cvAutoTrack::new("cvAutoTrack.dll") }.expect ( "ERROR loading cvAutoTrack.dll" );
-        }
-        Err(_e) => {
-            cvat = unsafe{ cvAutoTrack::new("./cvAutoTrack/cvAutoTrack.dll") }.expect ( "ERROR loading cvAutoTrack.dll" );
-        }
-    }
-    
     log::debug!("start_track_thead: start");
     if get_is_tracking() {
         log::debug!("start_track_thead again?");
         return true;
     }
+
+    let cvat = {
+        let guard = ensure_cvat_instance().lock().unwrap();
+        if let Some((cvat, _)) = guard.as_ref() {
+            cvat.clone()
+        } else {
+            initialize_cvat().unwrap();
+            let guard = ensure_cvat_instance().lock().unwrap();
+            if let Some((cvat, _)) = guard.as_ref() {
+                cvat.clone()
+            } else {
+                return false;
+            }
+        }
+    };
+
     if unsafe { cvat.init() } {
         log::debug!("start_track_thead init done");
         set_is_tracking(true);
@@ -46,7 +59,7 @@ pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> 
         } else {
             // cvat.set_use_dx11_capture_mode();
         }
-        // unsafe { cvat.SetDisableFileLog() };
+        
         (*ensure_thread_pool())
             .lock()
             .unwrap()
@@ -64,8 +77,9 @@ pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> 
                     }
                 }
             });
+        return true;
     }
-    true
+    false
 }
 
 // TODO: sender를 통해 &cvAutoTrack 를 전송할 수 있는가?
@@ -194,4 +208,31 @@ fn get_last_err_json(cvat: &cvAutoTrack) -> &CStr {
     let c_buf: *mut i8 = cs.as_mut_ptr();
     unsafe { cvat.GetLastErrJson(c_buf, 256) };
     unsafe { CStr::from_ptr(c_buf) }
+}
+
+fn ensure_cvat_instance() -> &'static Mutex<Option<(cvAutoTrack, Library)>> {
+    CVAT_INSTANCE.get_or_init(|| Mutex::new(None))
+}
+
+pub fn initialize_cvat() -> Result<(), Box<dyn Error>> {
+    let cvat = match set_lib_directory() {
+        Ok(_) => unsafe { cvAutoTrack::new("cvAutoTrack.dll") }
+            .expect("ERROR loading cvAutoTrack.dll"),
+        Err(_) => unsafe { cvAutoTrack::new("./cvAutoTrack/cvAutoTrack.dll") }
+            .expect("ERROR loading cvAutoTrack.dll"),
+    };
+    *ensure_cvat_instance().lock().unwrap() = Some((cvat, unsafe { Library::new("cvAutoTrack.dll").unwrap() }));
+    Ok(())
+}
+
+pub fn unload_cvat() -> Result<(), Box<dyn Error>> {
+    let mut guard = ensure_cvat_instance().lock().unwrap();
+    if let Some((cvat, _)) = guard.take() {
+        if get_is_tracking() {
+            unsafe { cvat.uninit() };
+            set_is_tracking(false);
+        }
+        cvat.close();
+    }
+    Ok(())
 }

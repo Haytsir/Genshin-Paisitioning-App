@@ -276,6 +276,8 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
         }
     }
 
+    crate::cvat::unload_cvat().unwrap();
+
     // 첫 번째 첨부 파일 가져오기
     let assets = &json["assets"];
     for asset in assets.as_array().unwrap() {

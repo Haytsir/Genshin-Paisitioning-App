@@ -491,4 +491,7 @@ impl cvAutoTrack {
             .as_ref()
             .expect("Expected function, got error."))()
     }
+    pub fn close(self) {
+        drop(self.__library);
+    }
 }
