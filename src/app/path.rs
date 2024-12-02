@@ -42,9 +42,5 @@ pub fn get_current_work_directory() -> PathBuf {
 }
 
 pub fn get_lib_path() -> PathBuf {
-    std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("cvAutoTrack")
+    get_app_path().join("cvAutoTrack")
 }

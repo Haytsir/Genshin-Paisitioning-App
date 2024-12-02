@@ -27,7 +27,7 @@ static CVAT_INSTANCE: OnceCell<Mutex<Option<(cvAutoTrack, Library)>>> = OnceCell
 
 impl Clone for cvAutoTrack {
     fn clone(&self) -> Self {
-        unsafe { cvAutoTrack::new(get_lib_path().join("./cvAutoTrack/cvAutoTrack.dll").to_str().unwrap()).unwrap() }
+        unsafe { cvAutoTrack::new(get_lib_path().join("./cvAutoTrack.dll").to_str().unwrap()).unwrap() }
     }
 }
 
@@ -224,12 +224,12 @@ fn ensure_cvat_instance() -> &'static Mutex<Option<(cvAutoTrack, Library)>> {
 
 pub fn initialize_cvat() -> Result<(), Box<dyn Error>> {
     let cvat = match set_lib_directory() {
-        Ok(_) => unsafe { cvAutoTrack::new("./cvAutoTrack/cvAutoTrack.dll") }
+        Ok(_) => unsafe { cvAutoTrack::new(get_lib_path().join("cvAutoTrack.dll").to_str().unwrap()) }
             .expect("ERROR loading cvAutoTrack.dll"),
-        Err(_) => unsafe { cvAutoTrack::new("./cvAutoTrack/cvAutoTrack.dll") }
+        Err(_) => unsafe { cvAutoTrack::new(get_lib_path().join("cvAutoTrack.dll").to_str().unwrap()) }
             .expect("ERROR loading cvAutoTrack.dll"),
     };
-    *ensure_cvat_instance().lock().unwrap() = Some((cvat, unsafe { Library::new("cvAutoTrack.dll").unwrap() }));
+    *ensure_cvat_instance().lock().unwrap() = Some((cvat, unsafe { Library::new(get_lib_path().join("cvAutoTrack.dll").to_str().unwrap()).unwrap() }));
     Ok(())
 }
 
