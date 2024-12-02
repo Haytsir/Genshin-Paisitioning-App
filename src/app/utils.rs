@@ -2,7 +2,6 @@ use crate::app::path;
 use std::fs;
 use std::{ffi::CString, path::PathBuf};
 use std::path::Path;
-use std::process::Command;
 use windows::{
     core::{s, Result as WinResult, PCSTR}, Win32::Foundation::*, Win32::Security::*, Win32::{System::Memory::*, UI::Shell::ShellExecuteA},
     Win32::System::{

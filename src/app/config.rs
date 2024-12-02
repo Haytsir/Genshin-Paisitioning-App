@@ -15,14 +15,14 @@ pub fn init_config() -> Result<Config, std::io::Error> {
             log::error!("Error: {}", e);
         }
     }
-    /* match create_config_file_if_not_exist(&target_dir.join("config.json"))
+    match create_config_file_if_not_exist(&target_dir.join("config.json"))
     {
         Ok(_) => {},
         Err(e) => {
             log::error!("Config File: 생성 실패");
             log::error!("Error: {}", e);
         }
-    } */
+    }
 
     let settings = Config::builder()
         .add_source(config::File::new(target_dir.join("config.json").to_str().unwrap(), FileFormat::Json))
@@ -44,6 +44,7 @@ pub fn init_config() -> Result<Config, std::io::Error> {
 
 pub fn create_config_file_if_not_exist(target_path: &PathBuf) -> Result<(), std::io::Error>{
     if !target_path.exists() {
+        log::debug!("Config File: 생성");
         let app_config = AppConfig {
             auto_app_update: true,
             auto_lib_update: true,
