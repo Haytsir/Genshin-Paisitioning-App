@@ -21,7 +21,7 @@ pub fn get_logs_path() -> PathBuf {
     get_app_path().join("logs")
 }
 
-pub fn get_current_exe_path() -> String {
+/* pub fn get_current_exe_path() -> String {
     match std::env::current_exe() {
         Ok(current_exe) => {
             match current_exe.file_name() {
@@ -31,7 +31,7 @@ pub fn get_current_exe_path() -> String {
         },
         Err(_) => String::new(),
     }
-}
+} */
 
 pub fn get_current_work_directory() -> PathBuf {
     std::env::current_exe()

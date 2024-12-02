@@ -6,17 +6,19 @@ use std::sync::Mutex;
 use super::bindings::cvAutoTrack;
 
 use crate::app::set_lib_directory;
-use crate::models::{AppConfig, AppEvent, TrackData, WsEvent};
+use crate::models::{AppConfig, TrackData, WsEvent};
 use libc::{c_double, c_int};
 use std::ffi::CStr;
 use std::option::Option;
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Sender;
 use std::thread;
 use std::time::Duration;
 use threadpool::ThreadPool;
 use libloading::Library;
 
+use super::translations::translate_error_json;
+use crate::app::path::get_lib_path;
 static THREAD_POOL: OnceCell<Mutex<ThreadPool>> = OnceCell::new();
 static IS_TRACKING: OnceCell<Mutex<bool>> = OnceCell::new();
 static CAPTURE_INTERVAL: OnceCell<Mutex<u64>> = OnceCell::new();
@@ -25,7 +27,7 @@ static CVAT_INSTANCE: OnceCell<Mutex<Option<(cvAutoTrack, Library)>>> = OnceCell
 
 impl Clone for cvAutoTrack {
     fn clone(&self) -> Self {
-        unsafe { cvAutoTrack::new("cvAutoTrack.dll").unwrap() }
+        unsafe { cvAutoTrack::new(get_lib_path().join("./cvAutoTrack/cvAutoTrack.dll").to_str().unwrap()).unwrap() }
     }
 }
 
@@ -37,17 +39,17 @@ pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> 
     }
 
     let cvat = {
-        let guard = ensure_cvat_instance().lock().unwrap();
+        let mut guard = ensure_cvat_instance().lock().unwrap();
+        if guard.is_none() {
+            drop(guard);  // 먼저 락을 해제
+            initialize_cvat().unwrap();
+            guard = ensure_cvat_instance().lock().unwrap();
+        }
+        
         if let Some((cvat, _)) = guard.as_ref() {
             cvat.clone()
         } else {
-            initialize_cvat().unwrap();
-            let guard = ensure_cvat_instance().lock().unwrap();
-            if let Some((cvat, _)) = guard.as_ref() {
-                cvat.clone()
-            } else {
-                return false;
-            }
+            return false;
         }
     };
 
@@ -78,6 +80,8 @@ pub fn start_track_thead(sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> 
                 }
             });
         return true;
+    } else {
+        log::debug!("start_track_thead init failed");
     }
     false
 }
@@ -175,15 +179,18 @@ pub fn track_process(cvat: &cvAutoTrack, sender: Option<Sender<WsEvent>>) -> Res
         &mut trackdata.r,
         &mut trackdata.m,
     ) {
-        Ok(_) => {}
+        Ok(_) => {
+            log::debug!("track_process success: {:?}", trackdata);
+            let _ = sender.unwrap().send(WsEvent::Track(trackdata));
+            return Ok(());
+        }
         Err(e) => {
             trackdata.err = e.to_string();
+            log::debug!("track_process error: {}", trackdata.err);
             let _ = sender.unwrap().send(WsEvent::Track(trackdata));
             return Err(e);
         }
     }
-    let _ = sender.unwrap().send(WsEvent::Track(trackdata));
-    Ok(())
 }
 
 pub fn track(
@@ -195,19 +202,20 @@ pub fn track(
     m: &mut c_int,
 ) -> Result<(), Box<dyn Error>> {
     if unsafe {!cvat.GetTransformOfMap(x, y, a, m)} {        
-        return Err(get_last_err_json(&cvat).to_str().unwrap().into());
+        return Err(get_last_err_json(&cvat).into());
     }
     if unsafe {!cvat.GetRotation(r)} {
-        return Err(get_last_err_json(&cvat).to_str().unwrap().into());
+        return Err(get_last_err_json(&cvat).into());
     }
     Ok(())
 }
 
-fn get_last_err_json(cvat: &cvAutoTrack) -> &CStr {
+fn get_last_err_json(cvat: &cvAutoTrack) -> String {
     let mut cs:[i8; 256] = [0; 256];
     let c_buf: *mut i8 = cs.as_mut_ptr();
     unsafe { cvat.GetLastErrJson(c_buf, 256) };
-    unsafe { CStr::from_ptr(c_buf) }
+    let error_json = unsafe { CStr::from_ptr(c_buf) }.to_str().unwrap_or("{}");
+    translate_error_json(error_json).unwrap_or_else(|_| error_json.to_string())
 }
 
 fn ensure_cvat_instance() -> &'static Mutex<Option<(cvAutoTrack, Library)>> {
@@ -216,7 +224,7 @@ fn ensure_cvat_instance() -> &'static Mutex<Option<(cvAutoTrack, Library)>> {
 
 pub fn initialize_cvat() -> Result<(), Box<dyn Error>> {
     let cvat = match set_lib_directory() {
-        Ok(_) => unsafe { cvAutoTrack::new("cvAutoTrack.dll") }
+        Ok(_) => unsafe { cvAutoTrack::new("./cvAutoTrack/cvAutoTrack.dll") }
             .expect("ERROR loading cvAutoTrack.dll"),
         Err(_) => unsafe { cvAutoTrack::new("./cvAutoTrack/cvAutoTrack.dll") }
             .expect("ERROR loading cvAutoTrack.dll"),

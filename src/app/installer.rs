@@ -94,7 +94,7 @@ pub fn uninstall() -> Result<(), std::io::Error> {
                 return Err(e.into());
             }
         }
-        self_replace::self_delete_at(target_dir);
+        let _ = self_replace::self_delete_at(target_dir);
     } else {
         let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 제거를 취소했습니다.\n관리자 권한이 필요합니다.", true);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "관리자 권한이 필요합니다."));

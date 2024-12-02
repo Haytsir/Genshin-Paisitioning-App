@@ -146,7 +146,7 @@ fn ready(param: Vec<&str>) {
         // Ws과 Cvat Library의 연동 핸들러 시작
         pool.execute(move || {
             log::debug!("start ws handler");
-            websocket::handler::ws_event_handler(config.clone(), Some(ws_sender.clone()), Some(cvat_receiver.clone()));
+            let _ = websocket::handler::ws_event_handler(config.clone(), Some(ws_sender.clone()), Some(cvat_receiver.clone()));
         });
 
         // 트레이 아이콘 추가

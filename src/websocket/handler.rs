@@ -167,7 +167,7 @@ pub fn ws_event_handler(mut config: config::Config, tx: Option<Sender<WsEvent>>,
                 let result = crate::app::updater::check_app_update(config.clone(), id.clone(), tx.clone(), force);
                 match result {
                     Ok(_) => {}
-                    Err(e) => {
+                    Err(_e) => {
                         log::error!("Updater: 업데이트 실패");
                         return Err(warp::reject::custom(CustomError::UPDATE_FAILED));
                     }
@@ -234,7 +234,7 @@ pub fn ws_event_handler(mut config: config::Config, tx: Option<Sender<WsEvent>>,
             Ok(_) => {
                 log::error!("Unknown: {:#?}", res);
             }
-            Err(e) => {
+            Err(_e) => {
                 log::error!("Updater: 업데이트 실패");
                 return Err(warp::reject::custom(CustomError::UPDATE_FAILED));
             } //panic!("panic happened"),

@@ -3,10 +3,11 @@
  * implement함수 접근 시 cvat::features::함수명 으로 접근해야함.
  * 이를 inline module로 둠으로써, cvat::함수명 으로 접근 가능하도록 한다.
  */
-mod features;
 mod bindings;
+mod features;
+mod translations;
 
-pub use self::features::*;
+pub use features::*;
 
 #[cfg(test)]
 mod test;

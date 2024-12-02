@@ -3,7 +3,6 @@ use std::fs;
 use std::{ffi::CString, path::PathBuf};
 use std::path::Path;
 use std::process::Command;
-use log::debug;
 use windows::{
     core::{s, Result as WinResult, PCSTR}, Win32::Foundation::*, Win32::Security::*, Win32::{System::Memory::*, UI::Shell::ShellExecuteA},
     Win32::System::{
@@ -151,19 +150,6 @@ pub fn is_elevated() -> WinResult<bool> {
         _ = LocalFree(buffer);
         Ok(required_privileges.len() == 0)
     }
-}
-
-pub fn run_cmd(cmd: &str) {
-    let _ = Command::new("powershell")
-        .args([
-            "-Command",
-            "Start-Process",
-            "-FilePath",
-            "cmd",
-            "-ArgumentList",
-            format!("\"/C {cmd}\"").as_str(),
-        ])
-        .status();
 }
 
 pub fn is_process_already_running() -> bool {

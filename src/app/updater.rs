@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::app::terminate_process;
 //use sevenz_rust::default_entry_extract_fn;
 use crate::models::{WsEvent, AppConfig};
-use crate::models::{AppEvent, UpdateInfo};
+use crate::models::UpdateInfo;
 use crate::views::confirm::confirm_dialog;
 use crate::app::path;
 use std::collections::HashMap;
@@ -109,9 +109,9 @@ fn fetch_app_version_on_github(owner: &str, repo: &str, force: bool) -> Result<V
     Ok(json)
 }
 
-pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Result<()> {
+pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String, force: bool) -> Result<()> {
     debug!("download_app");
-    let json: Value = fetch_app_version_on_github("Haytsir", "Genshin-Paisitioning-App", false)?;
+    let json: Value = fetch_app_version_on_github("Haytsir", "Genshin-Paisitioning-App", force)?;
     let cache_dir = path::get_cache_path();
     // 태그 이름 가져오기
     let version = env!("CARGO_PKG_VERSION");
@@ -221,7 +221,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String) -> Re
     return Ok(());
 }
 
-pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> Result<()> {
+pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, force: bool) -> Result<()> {
     debug!("download_cvat");
     let lib_path = std::env::current_exe()
         .unwrap()
@@ -232,7 +232,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String) -> R
     let cache_dir = path::get_cache_path();
 
     // 최신 릴리스 정보 가져오기
-    let json: Value = fetch_app_version_on_github("Haytsir", "gpa-lib-mirror", false)?;
+    let json: Value = fetch_app_version_on_github("Haytsir", "gpa-lib-mirror", force)?;
 
     debug!("json: {:#?}", json);
     // 태그 이름 가져오기
@@ -522,7 +522,7 @@ pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Se
     })?;
     log::debug!("app_config: {:?}", app_config);
     if app_config.auto_app_update {
-        let result = download_app(tx.clone(), client_id.clone());
+        let result = download_app(tx.clone(), client_id.clone(), force);
         match result {
             Ok(_) => {
                 log::debug!("App Ready!");
@@ -567,7 +567,7 @@ pub fn check_lib_update(config: config::Config, client_id: String, tx: Option<Se
     })?;
     log::debug!("app_config: {:?}", app_config);
     if app_config.auto_app_update {
-        let result = super::updater::download_cvat(tx.clone(), client_id.clone());
+        let result = super::updater::download_cvat(tx.clone(), client_id.clone(), force);
         match result {
             Ok(_) => {
                 log::debug!("Lib Ready!");
