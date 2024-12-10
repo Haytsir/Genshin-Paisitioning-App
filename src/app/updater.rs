@@ -223,12 +223,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String, force
 
 pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, force: bool) -> Result<()> {
     debug!("download_cvat");
-    let lib_path = std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("cvAutoTrack"); // 저장할 파일 경로 및 이름
-    
+    let lib_path = path::get_lib_path();    
     let cache_dir = path::get_cache_path();
 
     // 최신 릴리스 정보 가져오기
@@ -515,6 +510,21 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
 }
 
 pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>, force: bool) -> Result<()> {
+    #[cfg(debug_assertions)]
+    {
+        log::debug!("!!! 디버그 모드입니다 !!!");
+        log::debug!("현재 버전을 계속 사용합니다!");
+        let result = send_app_update_info(tx.clone(), client_id.clone(), None);
+        match result {
+            Ok(_) => {
+                return result;
+            }
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(e);
+            }   
+        }
+    }
     debug!("check_app_update");
     let app_config: AppConfig = config.clone().try_deserialize().map_err(|e| {
         log::error!("{}", e);
@@ -560,7 +570,6 @@ pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Se
 }
 
 pub fn check_lib_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>, force: bool) -> Result<()> {
-    //let app_config: std::result::Result<AppConfig, config::ConfigError>  = config.clone().try_deserialize();
     let app_config: AppConfig = config.clone().try_deserialize().map_err(|e| {
         log::error!("{}", e);
         Box::<dyn std::error::Error + Send + Sync>::from(e)
@@ -635,11 +644,7 @@ fn send_lib_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, u
     let lib_path: PathBuf;
     let version_string: String;
     if update_info.is_none() {
-        lib_path = std::env::current_exe()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .join("cvAutoTrack"); // 저장할 파일 경로 및 이름
+        lib_path = path::get_lib_path();
         version_string = get_local_version(&lib_path);
 
         info = update_info.unwrap_or(UpdateInfo {

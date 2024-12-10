@@ -4,8 +4,6 @@
     , non_snake_case
     , dead_code)]
 
-extern crate libloading;
-
 #[derive(Debug)]
 pub struct cvAutoTrack {
     __library: ::libloading::Library,

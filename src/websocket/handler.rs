@@ -1,10 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::{cvat::{on_config_changed, set_capture_delay_on_error, set_capture_interval, set_is_tracking, start_track_thead}, models::{AppConfig, AppEvent, WsEvent, UpdateInfo}};
+use crate::{models::{AppConfig, AppEvent, WsEvent, UpdateInfo}};
 use config::Config;
 use crossbeam_channel::{Receiver, Sender};
-use log::debug;
-use warp::reject::Reject;
 
 use crate::websocket::{ws, Client, Clients, Result};
 use serde::{Deserialize, Serialize};
@@ -12,6 +10,7 @@ use uuid::Uuid;
 use warp::{http::StatusCode, reply::json, ws::Message, Reply};
 
 use crate::models::TrackData;
+use crate::websocket::handlers::{ConfigHandler, UpdateHandler, TrackHandler};
 
 #[derive(Deserialize, Debug)]
 pub struct RegisterRequest {
@@ -141,103 +140,44 @@ pub async fn health_handler() -> Result<impl Reply> {
 }
 
 #[derive(Debug)]
-struct CustomError {
-    message: &'static str,
+pub enum CustomError {
+    UPDATE_FAILED,
+    CONFIG_ERROR,
 }
 
-impl Reject for CustomError {}
+impl warp::reject::Reject for CustomError {}
 
-impl Display for CustomError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl CustomError {
-    const UPDATE_FAILED: CustomError = CustomError { message: "Updater: 업데이트 실패" };
-}
-
-pub fn ws_event_handler(mut config: config::Config, tx: Option<Sender<WsEvent>>, rx: Option<Receiver<AppEvent>>) -> std::result::Result<(), warp::Rejection> {
+pub fn ws_event_handler(
+    mut config: Config, 
+    tx: Option<Sender<WsEvent>>, 
+    rx: Option<Receiver<AppEvent>>
+) -> std::result::Result<(), warp::reject::Rejection> {
     log::info!("Start Listening Websocket Event");
+    
     while let Some(r) = rx.as_ref() {
-        let res = r.recv();
-        match res {
+        match r.recv() {
             Ok(AppEvent::CheckAppUpdate(id, force)) => {
-                debug!("Got CheckAppUpdate in Event Handler");
-                let result = crate::app::updater::check_app_update(config.clone(), id.clone(), tx.clone(), force);
-                match result {
-                    Ok(_) => {}
-                    Err(_e) => {
-                        log::error!("Updater: 업데이트 실패");
-                        return Err(warp::reject::custom(CustomError::UPDATE_FAILED));
-                    }
-                }
-            } 
+                UpdateHandler::handle_app_update(id, force, &config, &tx)?;
+            }
             Ok(AppEvent::CheckLibUpdate(id, force)) => {
-                debug!("Got CheckLibUpdate in Event Handler");
-                let result = crate::app::updater::check_lib_update(config.clone(), id.clone(), tx.clone(), force);
-                match result {
-                    Ok(_) => {}
-                    Err(e) => {
-                        log::error!("Updater: 업데이트 실패");
-                        return Err(warp::reject::custom(CustomError::UPDATE_FAILED));
-                    }
-                }
+                UpdateHandler::handle_lib_update(id, force, &config, &tx)?;
             }
             Ok(AppEvent::Init()) => {
-                debug!("Got Init in Event Handler");
-                let app_config: AppConfig = config.clone().try_deserialize().unwrap();
-                set_capture_interval(u64::from(app_config.capture_interval));
-                set_capture_delay_on_error(u64::from(app_config.capture_delay_on_error));
-                log::debug!("Got Init");
-                start_track_thead(tx.clone(), app_config.use_bit_blt_capture_mode);
+                let app_config: AppConfig = config.clone().try_deserialize::<AppConfig>()
+                    .map_err(|_| warp::reject::custom(CustomError::CONFIG_ERROR))?;
+                TrackHandler::handle_init(&tx, app_config.use_bit_blt_capture_mode)?;
             }
             Ok(AppEvent::Uninit()) => {
-                log::debug!("Got Uninit in Event Handler");
-                set_is_tracking(false);
-                // stop_track_thread(cvat/*tx.clone()*/);
+                TrackHandler::handle_uninit()?;
             }
             Ok(AppEvent::GetConfig(id)) => {
-                log::debug!("Got GetConfig in Event Handler");
-                if let Some(t) = tx.as_ref() {
-                    let app_config: AppConfig = config.clone().try_deserialize().unwrap();
-                    t.send(WsEvent::Config(app_config, id)).unwrap();
-                }
+                ConfigHandler::handle_get_config(id, &config, &tx)?;
             }
-            Ok(AppEvent::SetConfig(mut new_app_config, id)) => {
-                log::debug!("Got SetConfig in Event Handler");
-                if let Some(t) = tx.as_ref() {
-                    let new_config = Config::builder()
-                        .add_source(config.clone())
-                        .set_override("captureInterval", new_app_config.capture_interval)
-                        .expect("Failed to set override")
-                        .set_override("captureDelayOnError", new_app_config.capture_delay_on_error)
-                        .expect("Failed to set override")
-                        .set_override(
-                            "useBitBltCaptureMode",
-                            new_app_config.use_bit_blt_capture_mode,
-                        )
-                        .expect("Failed to set override")
-                        .build();
-                    
-                    config = match new_config {
-                        Ok(cfg) => {
-                            on_config_changed(config.clone(), cfg.clone());
-                            cfg
-                        },
-                        Err(_) => return Err(warp::reject::custom(CustomError::UPDATE_FAILED)),
-                    };
-                    new_app_config.changed = Some(true);
-                    t.send(WsEvent::Config(new_app_config, id)).unwrap();
-                }
+            Ok(AppEvent::SetConfig(new_config, id)) => {
+                ConfigHandler::handle_set_config(new_config, id, &mut config, &tx)?;
             }
-            Ok(_) => {
-                log::error!("Unknown: {:#?}", res);
-            }
-            Err(_e) => {
-                log::error!("Updater: 업데이트 실패");
-                return Err(warp::reject::custom(CustomError::UPDATE_FAILED));
-            } //panic!("panic happened"),
+            Ok(_) => {}
+            Err(_) => return Err(warp::reject::custom(CustomError::UPDATE_FAILED)),
         }
     }
     Ok(())

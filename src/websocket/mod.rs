@@ -10,6 +10,7 @@ use crate::models::{AppEvent, WsEvent};
 use std::thread;
 
 pub(crate) mod handler;
+pub(crate) mod handlers;
 mod ws;
 
 type Result<T> = std::result::Result<T, Rejection>;
@@ -75,7 +76,7 @@ pub async fn serve(sender: Sender<AppEvent>, receiver: Receiver<WsEvent>) {
         .and(warp::ws()) // HTTP연결을 WebSocket연결로 Upgrade하기 위한 필터
         .and(warp::path::param())
         .and(with_clients(clients.clone()))
-        .and(with_sender(sender.clone()))
+        .and(with_sender(sender))  // sender를 clone하지 않고 전달
         .and_then(handler::ws_handler);
 
     // 라우터를 등록하고, CORS를 지원하도록 함
@@ -88,15 +89,13 @@ pub async fn serve(sender: Sender<AppEvent>, receiver: Receiver<WsEvent>) {
     thread::spawn(move || {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         loop {
-            let r = receiver.clone();
-            match r.recv() {
+            match receiver.recv() {
                 Ok(WsEvent::Config(x, id)) => {
                     log::debug!("Received: {:?}", x);
                     let _ = runtime
                         .handle()
                         .block_on(handler::send_config(x, clients.clone(), id));
                 }
-                // 다른 모듈로부터 받은 전송 데이터를 뿌려준다.
                 Ok(WsEvent::UpdateInfo(x, id)) => {
                     log::debug!("Received: {:?}", x);
                     let _ = runtime.handle().block_on(handler::send_update_info(
