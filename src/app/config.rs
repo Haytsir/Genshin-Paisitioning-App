@@ -152,13 +152,10 @@ pub async fn register_events(event_bus: &Arc<EventBus>, ws_handler: &Arc<WebSock
         let ws_handler = ws_handler_set.clone();
         async move {
             log::debug!("Set Config Event");
-            let config = if let Some(data) = &params.data {
-                match data {
-                    RequestDataTypes::AppConfig(data) => data.clone(),
-                    _ => AppConfig::default()
-                }
-            } else {
-                AppConfig::default()
+            let config = match &params.data {
+                Some(RequestDataTypes::AppConfig(data)) => data.clone(),
+                Some(_) => return Err("Invalid config data type".into()),
+                None => return Err("Config data is required".into())
             };
             ConfigManager::global().update(|c| {
                 *c = config.clone();
