@@ -34,7 +34,7 @@ async fn main() {
         }
         log::debug!("Logging debug messages.");
 
-        ready(["launch", "debug"].to_vec());
+        initialize(["launch", "debug"].to_vec());
     } else {
         // 디버그 모드가 아닐 때
         // 프로젝트 디렉토리에서 실행된 것이 아닐 경우,
@@ -60,7 +60,7 @@ async fn main() {
                 log::debug!("the program launched with scheme: genshin-paisitioning://");
                 let parameters = &a[a.find("://").unwrap() + 3..];
                 let param_vec: Vec<&str> = parameters.split('/').collect();
-                ready(param_vec);
+                initialize(param_vec);
             } else {
                 if a.eq("--debug") || a.eq("-d") {
                     match app::enable_debug() {
@@ -100,7 +100,7 @@ async fn main() {
     }
 }
 
-fn ready(param: Vec<&str>) {
+fn initialize(param: Vec<&str>) {
     log::debug!("Ready function called with parameters: {:?}", param);
     
     if param.contains(&"debug") {
