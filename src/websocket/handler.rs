@@ -1,16 +1,16 @@
-use std::fmt::{self, Display, Formatter};
+use std::sync::Arc;
 
-use crate::{models::{AppConfig, AppEvent, WsEvent, UpdateInfo}};
-use config::Config;
-use crossbeam_channel::{Receiver, Sender};
+use crate::models::{AppConfig, UpdateInfo};
 
-use crate::websocket::{ws, Client, Clients, Result};
+use crate::websocket::{Client, Clients};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use warp::{http::StatusCode, reply::json, ws::Message, Reply};
 
 use crate::models::TrackData;
-use crate::websocket::handlers::{ConfigHandler, UpdateHandler, TrackHandler};
+
+use super::ws::client_connection;
+use super::WebSocketHandler;
 
 #[derive(Deserialize, Debug)]
 pub struct RegisterRequest {
@@ -29,7 +29,7 @@ pub struct Event {
     message: String,
 }
 
-pub async fn publish_handler(body: Event, clients: Clients) -> Result<impl Reply> {
+pub async fn publish_handler(body: Event, clients: Clients) -> Result<impl Reply, warp::Rejection> {
     clients
         .read()
         .await
@@ -47,20 +47,12 @@ pub async fn publish_handler(body: Event, clients: Clients) -> Result<impl Reply
     Ok(StatusCode::OK)
 }
 
-// TODO: app info send 함수, data를 받아오는 부분 작성해야 함
-/* pub async fn send_app_info(client: &Client) -> Result<impl Reply> {
-    if let Some(sender) = &client.sender {
-        let _ = sender.send(Ok(Message::text(format!("{{\"event\": \"app_info\", \"data\": {}}}", serde_json::to_string(&data).unwrap()))));
-    }
-    Ok(StatusCode::OK)
-} */
-
-pub async fn send_config(data: AppConfig, clients: Clients, id: String) -> Result<impl Reply> {
+pub async fn send_config(config: AppConfig, clients: Clients, id: String) -> Result<impl Reply, warp::Rejection> {
     let client = clients.read().await.get(&id).cloned().unwrap();
     if let Some(sender) = &client.sender {
         let _ = sender.send(Ok(Message::text(format!(
             "{{\"event\": \"config\", \"data\": {}}}",
-            serde_json::to_string(&data).unwrap()
+            serde_json::to_string(&config).unwrap()
         ))));
     }
     Ok(StatusCode::OK)
@@ -70,7 +62,7 @@ pub async fn send_update_info(
     data: UpdateInfo,
     clients: Clients,
     id: String,
-) -> Result<impl Reply> {
+) -> Result<impl Reply, warp::Rejection> {
     let client = clients.read().await.get(&id).cloned().unwrap();
     if let Some(sender) = &client.sender {
         let _ = sender.send(Ok(Message::text(format!(
@@ -81,7 +73,20 @@ pub async fn send_update_info(
     Ok(StatusCode::OK)
 }
 
-pub async fn broadcast_track(data: TrackData, clients: Clients) -> Result<impl Reply> {
+pub async fn broadcast_init(clients: Clients) -> Result<impl Reply, warp::Rejection> {
+    log::debug!("Broadcast Init");
+    clients.read().await.iter().for_each(|(_, client)| {
+        if let Some(sender) = &client.sender {
+        let _ = sender.send(Ok(Message::text(format!(
+            "{{\"event\": \"ready\"}}",
+            ))));
+        }
+    });
+    Ok(StatusCode::OK)
+}
+
+
+pub async fn broadcast_track(data: TrackData, clients: Clients) -> Result<impl Reply, warp::Rejection> {
     clients.read().await.iter().for_each(|(_, client)| {
         if let Some(sender) = &client.sender {
             let _ = sender.send(Ok(Message::text(format!(
@@ -94,7 +99,7 @@ pub async fn broadcast_track(data: TrackData, clients: Clients) -> Result<impl R
     Ok(StatusCode::OK)
 }
 
-pub async fn register_handler(body: RegisterRequest, clients: Clients) -> Result<impl Reply> {
+pub async fn register_handler(body: RegisterRequest, clients: Clients) -> Result<impl Reply, warp::Rejection> {
     let user_id = body.user_id;
     let uuid = Uuid::new_v4().as_simple().to_string();
 
@@ -115,7 +120,7 @@ async fn register_client(id: String, user_id: usize, clients: Clients) {
     );
 }
 
-pub async fn unregister_handler(id: String, clients: Clients) -> Result<impl Reply> {
+pub async fn unregister_handler(id: String, clients: Clients) -> Result<impl Reply, warp::Rejection> {
     clients.write().await.remove(&id);
     Ok(StatusCode::OK)
 }
@@ -124,18 +129,18 @@ pub async fn ws_handler(
     ws: warp::ws::Ws,
     id: String,
     clients: Clients,
-    sender: Sender<AppEvent>,
-) -> Result<impl Reply> {
+    ws_handler: Arc<WebSocketHandler>,
+) -> Result<impl Reply, warp::Rejection> {
     let client = clients.read().await.get(&id).cloned();
     match client {
         Some(c) => Ok(ws.on_upgrade(move |socket| {
-            ws::client_connection(socket, id, clients, c, sender)
+            client_connection(socket, id, clients, c, ws_handler)
         })),
         None => Err(warp::reject::not_found()),
     }
 }
 
-pub async fn health_handler() -> Result<impl Reply> {
+pub async fn health_handler() -> Result<impl Reply, warp::Rejection> {
     Ok(StatusCode::OK)
 }
 
@@ -146,39 +151,3 @@ pub enum CustomError {
 }
 
 impl warp::reject::Reject for CustomError {}
-
-pub fn ws_event_handler(
-    mut config: Config, 
-    tx: Option<Sender<WsEvent>>, 
-    rx: Option<Receiver<AppEvent>>
-) -> std::result::Result<(), warp::reject::Rejection> {
-    log::info!("Start Listening Websocket Event");
-    
-    while let Some(r) = rx.as_ref() {
-        match r.recv() {
-            Ok(AppEvent::CheckAppUpdate(id, force)) => {
-                UpdateHandler::handle_app_update(id, force, &config, &tx)?;
-            }
-            Ok(AppEvent::CheckLibUpdate(id, force)) => {
-                UpdateHandler::handle_lib_update(id, force, &config, &tx)?;
-            }
-            Ok(AppEvent::Init()) => {
-                let app_config: AppConfig = config.clone().try_deserialize::<AppConfig>()
-                    .map_err(|_| warp::reject::custom(CustomError::CONFIG_ERROR))?;
-                TrackHandler::handle_init(&tx, app_config.use_bit_blt_capture_mode)?;
-            }
-            Ok(AppEvent::Uninit()) => {
-                TrackHandler::handle_uninit()?;
-            }
-            Ok(AppEvent::GetConfig(id)) => {
-                ConfigHandler::handle_get_config(id, &config, &tx)?;
-            }
-            Ok(AppEvent::SetConfig(new_config, id)) => {
-                ConfigHandler::handle_set_config(new_config, id, &mut config, &tx)?;
-            }
-            Ok(_) => {}
-            Err(_) => return Err(warp::reject::custom(CustomError::UPDATE_FAILED)),
-        }
-    }
-    Ok(())
-}

@@ -7,21 +7,22 @@ mod cvat;
 mod models;
 mod websocket;
 mod views;
+mod events;
 
-use app::{is_process_already_running, path};
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use app::is_process_already_running;
 use crate::views::confirm::confirm_dialog;
-use models::{AppEvent, WsEvent};
-use threadpool::ThreadPool;
 use log::*;
+use std::{sync::Arc, thread};
+use events::EventBus;
+use websocket::WebSocketHandler;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     if is_process_already_running() {
         let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), &format!("GPA가 이미 실행중입니다.\n추가로 실행된 프로그램은 잠시 후 종료됩니다."), true);
         std::thread::sleep(std::time::Duration::from_millis(5000));
         return;
     }
-
 
     if cfg!(debug_assertions) {
         match app::enable_debug() {
@@ -41,9 +42,6 @@ fn main() {
         match app::check_proj_directory() {
             Ok(true) => {}
             Ok(false) => {
-                let target_dir = path::get_app_path();
-                let current_exe = std::env::current_exe().unwrap();
-                let exe_name = current_exe.file_name().unwrap();
                 if std::env::args().find(|x| x.eq("--update")).is_none() {
                     app::installer::install().unwrap();
                 }
@@ -103,25 +101,10 @@ fn main() {
 }
 
 fn ready(param: Vec<&str>) {
-    log::debug!("Argument: {:?}", param);
-    let (cvat_sender, cvat_receiver): (Sender<AppEvent>, Receiver<AppEvent>) = unbounded();
-    let (ws_sender, ws_receiver): (Sender<WsEvent>, Receiver<WsEvent>) = unbounded();
-    let pool: ThreadPool = ThreadPool::new(5);
-
-    let config_result = app::config::init_config();
-    let config: config::Config;
-    match config_result {
-        Ok(conf) => {
-            config = conf;
-        }
-        Err(e) => {
-            log::error!("Config: 로드 실패");
-            log::error!("Error: {}", e);
-            return;
-        }
-    }
-
+    log::debug!("Ready function called with parameters: {:?}", param);
+    
     if param.contains(&"debug") {
+        log::debug!("Debug mode enable.");
         match app::enable_debug() {
             Ok(_) => {
                 debug!("Debug mode enable.");
@@ -130,26 +113,31 @@ fn ready(param: Vec<&str>) {
             Err(e) => panic!("Debug mode enable failed. {}", e),
         }
     }
+    
     if param.contains(&"launch") {
-        log::debug!("Launch parameter found.");
-        let ws_handler_sender = cvat_sender;
-        let ws_handler_receiver = ws_receiver;
-
+        log::debug!("Launch mode enable.");
         // Ws 시작
-        pool.execute(move || {
-            log::debug!("start ws server");
-            websocket::serve(ws_handler_sender, ws_handler_receiver);
-        });
-
-        // Ws과 Cvat Library의 연동 핸들러 시작
-        pool.execute(move || {
-            log::debug!("start ws handler");
-            let _ = websocket::handler::ws_event_handler(config.clone(), Some(ws_sender.clone()), Some(cvat_receiver.clone()));
+        thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            runtime.block_on(async {
+                let ws_handler = Arc::new(WebSocketHandler::new());
+                let event_bus = Arc::new(EventBus::new());
+                
+                // 이벤트 핸들러 등록을 먼저 완료
+                cvat::register_events(&event_bus, &ws_handler).await
+                    .expect("Failed to register CVAT events");
+                app::updater::register_events(&event_bus, &ws_handler).await
+                    .expect("Failed to register Updater events");
+                app::config::register_events(&event_bus, &ws_handler).await
+                    .expect("Failed to register Config events");
+                
+                // 모든 이벤트가 등록된 후 WebSocket 서비스 시작
+                websocket::serve(Arc::clone(&ws_handler)).await
+                    .expect("Failed to serve WebSocket");
+            });
         });
 
         // 트레이 아이콘 추가
         app::add_tray_item();
     }
-
-    pool.join();
 }

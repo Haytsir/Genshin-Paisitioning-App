@@ -4,18 +4,23 @@ use reqwest::blocking::Client;
 use serde_json::Value;
 use crate::app::terminate_process;
 //use sevenz_rust::default_entry_extract_fn;
-use crate::models::{WsEvent, AppConfig};
+use crate::models::{AppConfig, RequestDataTypes, RequestEvent, SendEvent, WsEvent};
 use crate::models::UpdateInfo;
 use crate::views::confirm::confirm_dialog;
 use crate::app::path;
+use crate::websocket::WebSocketHandler;
 use std::collections::HashMap;
 use std::fs::{File, self};
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+use crate::events::{EventBus};
+use std::error::Error;
+use std::sync::Arc;
+use futures::StreamExt;
+use reqwest::Client as StreamClient;
+use std::cmp::min;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GithubCache {
@@ -38,7 +43,7 @@ fn get_cache_file_path(owner: &str, repo: &str) -> PathBuf {
     path::get_cache_path().join(format!("github_{}_{}.cache", owner, repo))
 }
 
-fn save_to_cache(owner: &str, repo: &str, data: &Value) -> Result<()> {
+fn save_to_cache(owner: &str, repo: &str, data: &Value) -> std::result::Result<(), Box<dyn Error + Send + Sync>> {
     let cache = GithubCache {
         timestamp: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -56,7 +61,7 @@ fn save_to_cache(owner: &str, repo: &str, data: &Value) -> Result<()> {
     Ok(())
 }
 
-fn load_from_cache(owner: &str, repo: &str) -> Result<Option<Value>> {
+fn load_from_cache(owner: &str, repo: &str) -> std::result::Result<Option<Value>, Box<dyn Error + Send + Sync>> {
     let cache_path = get_cache_file_path(owner, repo);
     if !cache_path.exists() {
         return Ok(None);
@@ -72,7 +77,7 @@ fn load_from_cache(owner: &str, repo: &str) -> Result<Option<Value>> {
     }
 }
 
-fn fetch_app_version_on_github(owner: &str, repo: &str, force: bool) -> Result<Value> {
+async fn fetch_app_version_on_github(owner: &str, repo: &str, force: bool) -> Result<Value, Box<dyn Error + Send + Sync>> {
     debug!("fetch_app_version_on_github");
     
     // 캐시 확인
@@ -84,7 +89,7 @@ fn fetch_app_version_on_github(owner: &str, repo: &str, force: bool) -> Result<V
     }
 
     // 캐시가 없거나 만료된 경우 GitHub API 호출
-    let client = Client::new();
+    let client = reqwest::Client::new();
     let url = format!(
         "https://api.github.com/repos/{}/{}/releases/latest",
         owner, repo
@@ -93,15 +98,16 @@ fn fetch_app_version_on_github(owner: &str, repo: &str, force: bool) -> Result<V
         .header("User-Agent", "reqwest")
         .header("Accept", "application/vnd.github.v3+json")
         .header("Content-Type", "application/json")
-        .send()?;
+        .send()
+        .await?;
         
     log::debug!("{:#?}", &response.status());
     if response.status().as_u16() != 200 {
-        let e = format!("Error: Github API 요청에 실패했습니다: {}", &response.text()?);
+        let e = format!("Error: Github API 요청에 실패했습니다: {}", &response.text().await?);
         return Err(e.into());
     }
     
-    let json: Value = serde_json::from_str(&response.text()?)?;
+    let json: Value = serde_json::from_str(&response.text().await?)?;
     
     // 응답 캐시에 저장
     save_to_cache(owner, repo, &json)?;
@@ -109,11 +115,15 @@ fn fetch_app_version_on_github(owner: &str, repo: &str, force: bool) -> Result<V
     Ok(json)
 }
 
-pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String, force: bool) -> Result<()> {
+pub async fn download_app(
+    ws_handler: WebSocketHandler, 
+    requester_id: String, 
+    force: bool
+) -> std::result::Result<(), Box<dyn Error + Send + Sync>> {
     debug!("download_app");
-    let json: Value = fetch_app_version_on_github("Haytsir", "Genshin-Paisitioning-App", force)?;
+    let json: Value = fetch_app_version_on_github("Haytsir", "Genshin-Paisitioning-App", force).await?;
     let cache_dir = path::get_cache_path();
-    // 태그 이름 가져오기
+    // 태그 이름 가져오
     let version = env!("CARGO_PKG_VERSION");
     let release_name = &json["tag_name"].as_str().unwrap_or("")[1..];
     let release_display_name = &json["name"].as_str().unwrap_or("");
@@ -137,10 +147,10 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String, force
         update_info.done = true;
         update_info.updated = false;
         // 처음 상황을 전송한다.
-        let _ = sender.unwrap().send(WsEvent::UpdateInfo(
-            update_info,
-            requester_id,
-        ));
+        ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+            info: Some(update_info), 
+            id: requester_id.clone() 
+        })).await?;
         return Ok(());
     } else {
         log::debug!(
@@ -156,7 +166,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String, force
         let asset_name = asset["name"].as_str().unwrap();
         log::debug!("{} 다운로드 시도", asset_url);
         log::debug!("파일명: {}", asset_name);
-        let sender = sender.clone();
+        let ws_handler = ws_handler.clone();
 
         // github에서 받은 파일이 .zip 확장자인 경우
         if asset_name.ends_with(".zip") {
@@ -169,7 +179,7 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String, force
                 .block_on(download_file(
                     asset_url,
                     &arch_path,
-                    sender.clone(),
+                    ws_handler.clone(),
                     update_info.clone(),
                     requester_id.clone(),
                 ))
@@ -204,10 +214,10 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String, force
 
                     let mut update_info = update_info.clone();
                     update_info.done = true;
-                    let _ = sender.as_ref().unwrap().send(WsEvent::UpdateInfo(
-                        update_info,
-                        requester_id.clone(),
-                    ));
+                    ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+                        info: Some(update_info), 
+                        id: requester_id.clone() 
+                    })).await?;
 
                     std::thread::sleep(Duration::from_millis(1000));
                     terminate_process();
@@ -221,21 +231,23 @@ pub fn download_app(sender: Option<Sender<WsEvent>>, requester_id: String, force
     return Ok(());
 }
 
-pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, force: bool) -> Result<()> {
+pub async fn download_cvat(
+    ws_handler: WebSocketHandler, 
+    requester_id: String, 
+    force: bool
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     debug!("download_cvat");
     let lib_path = path::get_lib_path();    
     let cache_dir = path::get_cache_path();
 
-    // 최신 릴리스 정보 가져오기
-    let json: Value = fetch_app_version_on_github("Haytsir", "gpa-lib-mirror", force)?;
-
-    debug!("json: {:#?}", json);
+    let json: Value = fetch_app_version_on_github("Haytsir", "gpa-lib-mirror", force).await?;
+    
     // 태그 이름 가져오기
     let version = get_local_version(&lib_path);
     let release_name = json["tag_name"].as_str().unwrap_or("");
     let release_display_name = json["name"].as_str().unwrap_or("");
 
-    // 업데이트를 요청한 유저에게 보낼 update info 생성
+    // 업데이트를 요한 유저에게 보낼 update info 생성
     let mut update_info = UpdateInfo {
         target_type: "cvat".to_string(),
         current_version: version.to_string(),
@@ -249,7 +261,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, forc
     };
 
     if lib_path.join("cvAutoTrack.dll").exists() {
-        // 버전 비교, 최신 버전이 버전 숫자가 더 낮은 경우가 있으니 파일 수정 시간으로 비교
+        // 버전 비교, 최신 버전이 자가 더 낮은 경우가 있으니 파일 수정 시간으로 비교
         let last_file_modified = get_file_modified_time(&lib_path.join("cvAutoTrack.dll"))?;
         let last_lib_published = parse_iso8601(json["published_at"].as_str().unwrap_or(""))?;
 
@@ -258,10 +270,10 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, forc
             update_info.done = true;
             update_info.updated = false;
             // 처음 상황을 전송한다.
-            let _ = sender.unwrap().send(WsEvent::UpdateInfo(
-                update_info,
-                requester_id,
-            ));
+            ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+                info: Some(update_info), 
+                id: requester_id.clone() 
+            })).await?;
             return Ok(());
         } else {
             log::debug!(
@@ -271,7 +283,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, forc
         }
     }
 
-    crate::cvat::unload_cvat().unwrap();
+    crate::cvat::unload_cvat().map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
     // 첫 번째 첨부 파일 가져오기
     let assets = &json["assets"];
@@ -280,10 +292,10 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, forc
         let asset_name = asset["name"].as_str().unwrap();
         log::debug!("{} 다운로드 시도", asset_url);
         log::debug!("파일명: {}", asset_name);
-        let sender = sender.clone();
+        let ws_handler = ws_handler.clone();
         let update_info = update_info.clone();
 
-        // github에서 받은 파일이 .zip 확장자인 경우
+        // github에서 은 파일이 .zip 확장자인 경우
         if asset_name.ends_with(".zip") {
             // 파일 다운로드 및 저장
             let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -295,7 +307,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, forc
                 .block_on(download_file(
                     asset_url,
                     &arch_path,
-                    sender.clone(),
+                    ws_handler.clone(),
                     update_info,
                     requester_id.clone(),
                 ))
@@ -328,7 +340,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, forc
                 }
             }
         } else if asset_name.ends_with(".md5") || asset_name.ends_with(".tag") {
-            // 파일 다운로드 및 저장
+            // 파일 다운로드  저장
             let runtime = tokio::runtime::Runtime::new().unwrap();
             // arch_path: .7z 파일의 경로
             let file_path = cache_dir.join(if asset_name.ends_with(".md5") {"cvAutoTrack.md5"} else {asset_name});
@@ -337,7 +349,7 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, forc
             let res = runtime.handle().block_on(download_file(
                 asset_url,
                 &file_path,
-                sender.clone(),
+                ws_handler.clone(),
                 update_info,
                 requester_id.clone(),
             ));
@@ -355,19 +367,20 @@ pub fn download_cvat(sender: Option<Sender<WsEvent>>, requester_id: String, forc
     }
 
     update_info.done = true;
-    let _ = sender.as_ref().unwrap().send(WsEvent::UpdateInfo(
-        update_info,
-        requester_id,
-    ));
+    ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+        info: Some(update_info), 
+        id: requester_id.clone() 
+    })).await?;
 
     Ok(())
 }
-fn get_file_modified_time(file_path: &PathBuf) -> Result<std::time::SystemTime> {
+
+fn get_file_modified_time(file_path: &PathBuf) -> std::result::Result<std::time::SystemTime, Box<dyn Error + Send + Sync>> {
     let metadata = std::fs::metadata(file_path)?;
     let modified_time = metadata.modified()?;
     Ok(modified_time)
 }
-fn parse_iso8601(date: &str) -> Result<std::time::SystemTime> {
+fn parse_iso8601(date: &str) -> std::result::Result<std::time::SystemTime, Box<dyn Error + Send + Sync>> {
     let datetime = chrono::DateTime::parse_from_rfc3339(date)?;
     Ok(datetime.into())
 }
@@ -411,18 +424,15 @@ pub fn compare_versions(version: &str, release_name: &str) -> bool {
         
 }
 
-use futures_util::StreamExt;
-use reqwest::Client as StreamClient;
-use std::cmp::min;
 use std::io::Write;
 
 pub async fn download_file(
     url: &str,
     path: &PathBuf,
-    sender: Option<Sender<WsEvent>>,
+    ws_handler: WebSocketHandler,
     mut update_info: UpdateInfo,
     requester_id: String,
-) -> Result<()> {
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     // Reqwest setup
     let client = StreamClient::new();
     let res = client
@@ -444,7 +454,6 @@ pub async fn download_file(
     let mut downloaded: u64 = 0;
     let mut stream = res.bytes_stream();
     let mut old_percent: f64 = -1.0;
-    let sender = sender.as_ref().unwrap();
     while let Some(item) = stream.next().await {
         let chunk = item.or(Err("Error while downloading file".to_string()))?;
         file.write_all(&chunk)
@@ -458,14 +467,17 @@ pub async fn download_file(
         if percent - old_percent > 1.0 {
             old_percent = percent;
             update_info.percent = percent;
-            let _ = sender.send(WsEvent::UpdateInfo(update_info, requester_id));
+            ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+                info: Some(update_info.clone()), 
+                id: requester_id.clone() 
+            })).await?;
         }
     }
 
     Ok(())
 }
 
-fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>) -> Result<()> {
+fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>) -> std::result::Result<(), Box<dyn Error + Send + Sync>> {
     let file = fs::File::open(arch_path).unwrap();
 
     let mut archive = zip::ZipArchive::new(file).unwrap();
@@ -509,114 +521,131 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
     Ok(())
 }
 
-pub fn check_app_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>, force: bool) -> Result<()> {
-    #[cfg(debug_assertions)]
-    {
+pub async fn register_events(
+    event_bus: &Arc<EventBus>, 
+    ws_handler: &Arc<WebSocketHandler>
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let ws_handler_app = ws_handler.clone();
+    let config = super::config::ConfigManager::global().get().await;
+    let config_clone = config.clone();
+    ws_handler.register("checkAppUpdate", move |id, params: RequestEvent| {
+        let ws_handler = ws_handler_app.clone();
+        let config = config_clone.clone();
+        async move {
+            let force = if let Some(data) = &params.data {
+                match data {
+                    RequestDataTypes::CheckAppUpdate(data) => data.force,
+                    _ => false
+                }
+            } else {
+                false
+            };
+            check_app_update(&config, id, (*ws_handler).clone(), force).await
+        }
+    }).await?;
+    let ws_handler_lib = ws_handler.clone();
+    let config_clone = config.clone();
+    ws_handler.register("checkLibUpdate", move |id, params: RequestEvent| {
+        let ws_handler = ws_handler_lib.clone();
+        let config = config_clone.clone();
+        async move {
+            let force = if let Some(data) = &params.data {
+                match data {
+                    RequestDataTypes::CheckLibUpdate(data) => data.force,
+                    _ => false
+                }
+            } else {
+                false
+            };
+            check_lib_update(&config, id, (*ws_handler).clone(), force).await
+        }
+    }).await?;
+
+    Ok(())
+}
+
+pub async fn check_app_update(
+    config: &AppConfig, 
+    client_id: String, 
+    ws_handler: WebSocketHandler, 
+    force: bool
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    if cfg!(debug_assertions) {
         log::debug!("!!! 디버그 모드입니다 !!!");
         log::debug!("현재 버전을 계속 사용합니다!");
-        let result = send_app_update_info(tx.clone(), client_id.clone(), None);
-        match result {
-            Ok(_) => {
-                return result;
-            }
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(e);
-            }   
-        }
+        ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+            info: None, 
+            id: client_id.clone() 
+        })).await?;
+        return Ok(());
     }
-    debug!("check_app_update");
-    let app_config: AppConfig = config.clone().try_deserialize().map_err(|e| {
-        log::error!("{}", e);
-        Box::<dyn std::error::Error + Send + Sync>::from(e)
-    })?;
-    log::debug!("app_config: {:?}", app_config);
-    if app_config.auto_app_update {
-        let result = download_app(tx.clone(), client_id.clone(), force);
-        match result {
+
+    if config.auto_app_update {
+        match download_app(ws_handler.clone(), client_id.clone(), force).await {
             Ok(_) => {
                 log::debug!("App Ready!");
-                return result;
+                Ok(())
             }
             Err(e) => {
                 log::error!("{}", e);
                 log::debug!("현재 버전을 계속 사용합니다!");
-                let tx_result = send_app_update_info(tx.clone(), client_id.clone(), None);
-                match tx_result {
-                    Ok(_) => {
-                        return Err(e);
-                    }
-                    Err(e) => {
-                        log::error!("{}", e);
-                        return Err(e);
-                    }
-                }
+                ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+                    info: None, 
+                    id: client_id.clone() 
+                })).await?;
+                Err(e)
             }
         }
     } else {
         log::debug!("자동 업데이트가 꺼져있습니다.");
         log::debug!("현재 버전을 계속 사용합니다!");
-        let result = send_app_update_info(tx.clone(), client_id.clone(), None);
-        match result {
-            Ok(_) => {
-                return result;
-            }
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(e);
-            }   
-        }
+        ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+            info: None, 
+            id: client_id.clone() 
+        })).await?;
+        Ok(())
     }
 }
 
-pub fn check_lib_update(config: config::Config, client_id: String, tx: Option<Sender<WsEvent>>, force: bool) -> Result<()> {
-    let app_config: AppConfig = config.clone().try_deserialize().map_err(|e| {
-        log::error!("{}", e);
-        Box::<dyn std::error::Error + Send + Sync>::from(e)
-    })?;
-    log::debug!("app_config: {:?}", app_config);
-    if app_config.auto_app_update {
-        let result = super::updater::download_cvat(tx.clone(), client_id.clone(), force);
-        match result {
+pub async fn check_lib_update(
+    config: &AppConfig, 
+    client_id: String, 
+    ws_handler: WebSocketHandler, 
+    force: bool
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    if config.auto_app_update {
+        match download_cvat(ws_handler.clone(), client_id.clone(), force).await {
             Ok(_) => {
                 log::debug!("Lib Ready!");
-                return result;
+                Ok(())
             }
             Err(e) => {
                 log::error!("{}", e);
                 log::debug!("현재 버전을 계속 사용합니다!");
-                let result = send_lib_update_info(tx.clone(), client_id.clone(), None);
-                match result {
-                    Ok(_) => {
-                        return Err(e);
-                    }
-                    Err(e) => {
-                        log::error!("{}", e);
-                        return Err(e);
-                    }
-                }
+                ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+                    info: None, 
+                    id: client_id.clone() 
+                })).await?;
+                Err(e)
             }
         }
     } else {
         log::debug!("자동 업데이트가 꺼져있습니다.");
         log::debug!("현재 버전을 계속 사용합니다!");
-        let result = send_lib_update_info(tx.clone(), client_id.clone(), None);
-        match result {
-            Ok(_) => {
-                return result;
-            }
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(e);
-            }
-        }
+        ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+            info: None, 
+            id: client_id.clone() 
+        })).await?;
+        Ok(())
     }
 }
 
-fn send_app_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, update_info: Option<UpdateInfo>) -> Result<()> {
-    // 업데이트를 요청한 유저에게 보낼 update info 생성
-    let info = update_info.unwrap_or(
-    UpdateInfo {
+pub async fn send_app_update_info(
+    ws_handler: WebSocketHandler,
+    requester_id: String,
+    update_info: Option<UpdateInfo>
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let info = update_info.unwrap_or(UpdateInfo {
         target_type: "app".to_string(),
         current_version: env!("CARGO_PKG_VERSION").to_string(),
         target_version: String::from(""),
@@ -627,19 +656,19 @@ fn send_app_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, u
         done: true,
         updated: false
     });
-    match sender.as_ref().unwrap().send(WsEvent::UpdateInfo(
-        info,
-        requester_id,
-    )) {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            log::error!("Error: {}", e);
-            Err(e.try_into().unwrap())
-        }
-    }
+    
+    ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+        info: Some(info), 
+        id: requester_id.clone() 
+    })).await?;
+    Ok(())
 }
 
-fn send_lib_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, update_info: Option<UpdateInfo>) -> Result<()> {
+pub async fn send_lib_update_info(
+    ws_handler: WebSocketHandler,
+    requester_id: String,
+    update_info: Option<UpdateInfo>
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let info: UpdateInfo;
     let lib_path: PathBuf;
     let version_string: String;
@@ -662,15 +691,9 @@ fn send_lib_update_info(sender: Option<Sender<WsEvent>>, requester_id: String, u
         info = update_info.unwrap();
     }
     
-    
-    match sender.as_ref().unwrap().send(WsEvent::UpdateInfo(
-        info,
-        requester_id,
-    )) {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            log::error!("Error: {}", e);
-            Err(e.try_into().unwrap())
-        }
-    }
+    ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
+        info: Some(info), 
+        id: requester_id.clone() 
+    })).await?;
+    Ok(())
 }

@@ -1,12 +1,18 @@
-use super::{state::*, error::*};
+use super::error::*;
 use super::translations::translate_error_json;
 use super::bindings::cvAutoTrack;
-use crossbeam_channel::Sender;
-use crate::models::{TrackData, WsEvent};
+use crate::app::get_app_state;
+use crate::models::{SendEvent, TrackData, WsEvent};
+use crate::websocket::WebSocketHandler;
 use std::thread;
 use std::time::Duration;
 use libc::{c_double, c_int};
+use warp::filters::ws;
 use std::ffi::CStr;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::runtime::Runtime;
+use tokio::spawn;
 
 pub struct Tracker<'a> {
     cvat: &'a cvAutoTrack,
@@ -14,71 +20,59 @@ pub struct Tracker<'a> {
 
 impl<'a> Tracker<'a> {
     pub fn new(cvat: &'a cvAutoTrack) -> Self {
-        Self { cvat }
+        Self { 
+            cvat
+        }
     }
 
-    pub fn start(&self, sender: Option<Sender<WsEvent>>, use_bit_blt: bool) -> Result<()> {
-        let mut state = get_state().lock().unwrap();
-        if state.is_tracking {
-            return Ok(());
-        }
+    pub fn start(&self, ws_handler: Arc<WebSocketHandler>) -> Result<()> {
+        log::debug!("Start Track");
 
-        if unsafe { !self.cvat.init() } {
-            return Err(CvatError::InitializationError("Failed to initialize tracking".into()));
-        }
-
-        state.is_tracking = true;
-        let thread_pool = state.thread_pool.clone();
-        drop(state);
+        let state = get_app_state();
+        state.set_tracking(true);
+        
+        let interval = Arc::clone(&state.capture_interval);
+        let delay = Arc::clone(&state.capture_delay_on_error);
+        let is_tracking = Arc::clone(&state.is_tracking);
+        
         let cvat = unsafe { &*(self.cvat as *const _) };
-        thread_pool.execute(move || {
-            while get_state().lock().unwrap().is_tracking {
-                match Self::track_process(cvat, sender.clone()) {
-                    Ok(_) => thread::sleep(Duration::from_millis(
-                        get_state().lock().unwrap().capture_interval
-                    )),
-                    Err(_) => thread::sleep(Duration::from_millis(
-                        get_state().lock().unwrap().capture_delay_on_error
-                    )),
+        let ws_handler_thread = ws_handler.clone();
+        
+        // spawn_blocking을 사용하여 별도 스레드에서 실행
+        tokio::task::spawn_blocking(move || {
+            let rt = Runtime::new().unwrap();
+            log::debug!("Tracking Thread Started");
+            
+            while is_tracking.load(Ordering::Relaxed) {
+                let mut trackdata = TrackData::default();
+                match Tracker::track(cvat, &mut trackdata.x, &mut trackdata.y, &mut trackdata.a, 
+                    &mut trackdata.r, &mut trackdata.m) {
+                    Ok(_) => {
+                        rt.block_on(ws_handler_thread.broadcast(
+                            SendEvent::from(WsEvent::Track { data: trackdata })
+                        ));
+                        thread::sleep(Duration::from_millis(
+                            interval.load(Ordering::Relaxed).into()
+                        ));
+                    },
+                    Err(e) => {
+                        rt.block_on(ws_handler_thread.broadcast(
+                            SendEvent::from(WsEvent::Track { data: trackdata })
+                        ));
+                        thread::sleep(Duration::from_millis(
+                            delay.load(Ordering::Relaxed).into()
+                        ));
+                    }
                 }
             }
             unsafe { cvat.uninit() };
+            Arc::clone(&is_tracking).store(false, Ordering::Relaxed);
+            state.set_tracking(false);
+            log::debug!("Tracking Thread Stopped");
+            rt.block_on(ws_handler_thread.broadcast(SendEvent::from(WsEvent::Uninit {})));
         });
         
         Ok(())
-    }
-
-    pub fn stop() -> Result<()> {
-        if let Ok(mut state) = get_state().lock() {
-            state.is_tracking = false;
-        }
-        Ok(())
-    }
-
-    fn track_process(cvat: &cvAutoTrack, sender: Option<Sender<WsEvent>>) -> Result<()> {
-        let mut trackdata = TrackData::default();
-        match Self::track(
-            cvat,
-            &mut trackdata.x,
-            &mut trackdata.y,
-            &mut trackdata.a,
-            &mut trackdata.r,
-            &mut trackdata.m,
-        ) {
-            Ok(_) => {
-                if let Some(tx) = sender {
-                    let _ = tx.send(WsEvent::Track(trackdata));
-                }
-                Ok(())
-            }
-            Err(e) => {
-                trackdata.err = e.to_string();
-                if let Some(tx) = sender {
-                    let _ = tx.send(WsEvent::Track(trackdata));
-                }
-                Err(e)
-            }
-        }
     }
 
     fn track(
@@ -90,10 +84,10 @@ impl<'a> Tracker<'a> {
         m: &mut c_int,
     ) -> Result<()> {
         if unsafe { !cvat.GetTransformOfMap(x, y, a, m) } {
-            return Err(CvatError::TrackingError(Self::get_last_error(cvat)));
+            return Err(CvatError::TrackingError(Tracker::get_last_error(cvat)));
         }
         if unsafe { !cvat.GetRotation(r) } {
-            return Err(CvatError::TrackingError(Self::get_last_error(cvat)));
+            return Err(CvatError::TrackingError(Tracker::get_last_error(cvat)));
         }
         Ok(())
     }
