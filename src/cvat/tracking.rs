@@ -86,7 +86,7 @@ impl<'a> Tracker<'a> {
         r: &mut c_double,
         m: &mut c_int,
     ) -> Result<()> {
-        if unsafe { !cvat.GetTransformOfMap(x, y, a, m) } {
+        if !unsafe { cvat.GetTransformOfMap(x, y, a, m) } {
             return Err(CvatError::TrackingError(Tracker::get_last_error(cvat)));
         }
         if unsafe { !cvat.GetRotation(r) } {
