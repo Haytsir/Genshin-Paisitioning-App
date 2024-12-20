@@ -22,9 +22,18 @@ impl fmt::Display for CvatError {
 
 impl Error for CvatError {}
 
+// 여러 다른 모듈에서 ? 연산자로 에러를 전파할 때 적절한 에러 타입으로 변환하기 위함.
 impl From<Box<dyn Error + Send + Sync>> for CvatError {
     fn from(error: Box<dyn Error + Send + Sync>) -> Self {
-        CvatError::LibraryError(error.to_string())
+        if error.is::<std::io::Error>() {
+            CvatError::InitializationError(error.to_string())
+        } else if error.to_string().contains("track") {
+            CvatError::TrackingError(error.to_string())
+        } else if error.to_string().contains("lock") {
+            CvatError::LockError(error.to_string())
+        } else {
+            CvatError::LibraryError(error.to_string())
+        }
     }
 }
 

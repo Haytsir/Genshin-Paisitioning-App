@@ -29,7 +29,7 @@ impl From<AppEvent> for EventType {
     }
 }
 
-type EventHandler = Box<dyn Fn(EventType) -> Result<(), Box<dyn Error>> + Send + Sync>;
+type EventHandler = Box<dyn Fn(&EventType) -> Result<(), Box<dyn Error>> + Send + Sync>;
 
 pub struct EventBus {
     handlers: Arc<RwLock<HashMap<EventType, Vec<EventHandler>>>>,
@@ -42,11 +42,11 @@ impl EventBus {
         }
     }
 
-    pub async fn emit(&self, event: EventType) -> Result<(), Box<dyn Error>> {
+    pub async fn emit(&self, event: &EventType) -> Result<(), Box<dyn Error>> {
         let handlers = self.handlers.read().await;
-        if let Some(event_handlers) = handlers.get(&event) {
+        if let Some(event_handlers) = handlers.get(event) {
             for handler in event_handlers {
-                handler(event.clone())?;
+                handler(event)?;
             }
         }
         Ok(())

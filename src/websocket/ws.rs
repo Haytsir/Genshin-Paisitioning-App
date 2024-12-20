@@ -49,8 +49,19 @@ impl WebSocketHandler {
     }
 
     pub async fn handle_message(&self, id: &str, msg: Message) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let message = msg.to_str()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid message format"))?;
+        let message = msg.to_str().map_err(|e| {
+            let sanitized = msg.as_bytes()
+                .iter()
+                .take(100)  // 처음 100바이트만 로깅
+                .map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '?' })
+                .collect::<String>();
+            
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData, 
+                format!("Invalid message format: '{}...' (error: {:?})", sanitized, e)
+            )
+        })?;
+
         log::debug!("handle_message from {} : {}", id, message);
 
         let req: RequestEvent = match from_str(message) {

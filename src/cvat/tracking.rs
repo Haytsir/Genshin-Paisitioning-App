@@ -31,6 +31,10 @@ impl<'a> Tracker<'a> {
         let state = get_app_state();
         state.set_tracking(true);
         
+        // Arc<AtomicBool|AtomicU32>로 선언. 이는 여러 스레드에서 공유되는 동일한 값을 가리킨다.
+        // 이를 통해 여러 스레드에서 동일한 값을 읽고 쓰는 것을 보장한다.
+        // state.set_tracking(false)를 호출하면 내부적으로 동일한 Arc<AtomicBool>을 업데이트함.
+        // Arc::clone(&is_tracking)으로 얻은 참조는 동일한 AtomicBool을 가리키는 새로운 Arc 핸들을 생성함.
         let interval = Arc::clone(&state.capture_interval);
         let delay = Arc::clone(&state.capture_delay_on_error);
         let is_tracking = Arc::clone(&state.is_tracking);
@@ -66,7 +70,6 @@ impl<'a> Tracker<'a> {
                 }
             }
             unsafe { cvat.uninit() };
-            Arc::clone(&is_tracking).store(false, Ordering::Relaxed);
             state.set_tracking(false);
             log::debug!("Tracking Thread Stopped");
             rt.block_on(ws_handler_thread.broadcast(SendEvent::from(WsEvent::Uninit {})));
