@@ -46,7 +46,7 @@ impl EventBus {
         let handlers = self.handlers.read().await;
         if let Some(event_handlers) = handlers.get(event) {
             for handler in event_handlers {
-                handler(event)?;
+                if let Err(e) = handler(event) { log::error!("Error handling event: {}", e); }
             }
         }
         Ok(())
