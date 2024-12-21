@@ -7,12 +7,10 @@ use crate::websocket::WebSocketHandler;
 use std::thread;
 use std::time::Duration;
 use libc::{c_double, c_int};
-use warp::filters::ws;
 use std::ffi::CStr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use tokio::runtime::Runtime;
-use tokio::spawn;
 
 pub struct Tracker<'a> {
     cvat: &'a cvAutoTrack,
@@ -52,7 +50,7 @@ impl<'a> Tracker<'a> {
                 match Tracker::track(cvat, &mut trackdata.x, &mut trackdata.y, &mut trackdata.a, 
                     &mut trackdata.r, &mut trackdata.m) {
                     Ok(_) => {
-                        rt.block_on(ws_handler_thread.broadcast(
+                        let _ = rt.block_on(ws_handler_thread.broadcast(
                             SendEvent::from(WsEvent::Track { data: trackdata })
                         ));
                         thread::sleep(Duration::from_millis(
@@ -60,7 +58,8 @@ impl<'a> Tracker<'a> {
                         ));
                     },
                     Err(e) => {
-                        rt.block_on(ws_handler_thread.broadcast(
+                        trackdata.err = e.to_string();
+                        let _ = rt.block_on(ws_handler_thread.broadcast(
                             SendEvent::from(WsEvent::Track { data: trackdata })
                         ));
                         thread::sleep(Duration::from_millis(
@@ -72,7 +71,7 @@ impl<'a> Tracker<'a> {
             unsafe { cvat.uninit() };
             state.set_tracking(false);
             log::debug!("Tracking Thread Stopped");
-            rt.block_on(ws_handler_thread.broadcast(SendEvent::from(WsEvent::Uninit {})));
+            let _ = rt.block_on(ws_handler_thread.broadcast(SendEvent::from(WsEvent::Uninit {})));
         });
         
         Ok(())

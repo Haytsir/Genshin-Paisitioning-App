@@ -1,9 +1,6 @@
-use crossbeam_channel::Sender;
 use log::debug;
-use reqwest::blocking::Client;
 use serde_json::Value;
 use crate::app::terminate_process;
-//use sevenz_rust::default_entry_extract_fn;
 use crate::models::{AppConfig, RequestDataTypes, RequestEvent, SendEvent, WsEvent};
 use crate::models::UpdateInfo;
 use crate::views::confirm::confirm_dialog;
@@ -15,7 +12,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
-use crate::events::{EventBus};
+use crate::events::EventBus;
 use std::error::Error;
 use std::sync::Arc;
 use futures::StreamExt;
@@ -34,8 +31,8 @@ impl GithubCache {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        // 24시간(86400초) 이내의 캐시만 유효
-        now - self.timestamp < 86400
+        // 2시간 이내의 캐시만 유효
+        now - self.timestamp < 7200
     }
 }
 
@@ -147,10 +144,7 @@ pub async fn download_app(
         update_info.done = true;
         update_info.updated = false;
         // 처음 상황을 전송한다.
-        ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-            info: Some(update_info), 
-            id: requester_id.clone() 
-        })).await?;
+        send_app_update_info(ws_handler.clone(), requester_id.clone(), Some(update_info)).await?;
         return Ok(());
     } else {
         log::debug!(
@@ -214,10 +208,7 @@ pub async fn download_app(
 
                     let mut update_info = update_info.clone();
                     update_info.done = true;
-                    ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-                        info: Some(update_info), 
-                        id: requester_id.clone() 
-                    })).await?;
+                    send_app_update_info(ws_handler.clone(), requester_id.clone(), Some(update_info)).await?;
 
                     std::thread::sleep(Duration::from_millis(1000));
                     terminate_process();
@@ -270,10 +261,7 @@ pub async fn download_cvat(
             update_info.done = true;
             update_info.updated = false;
             // 처음 상황을 전송한다.
-            ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-                info: Some(update_info), 
-                id: requester_id.clone() 
-            })).await?;
+            send_lib_update_info(ws_handler.clone(), requester_id.clone(), Some(update_info)).await?;
             return Ok(());
         } else {
             log::debug!(
@@ -367,10 +355,7 @@ pub async fn download_cvat(
     }
 
     update_info.done = true;
-    ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-        info: Some(update_info), 
-        id: requester_id.clone() 
-    })).await?;
+    send_lib_update_info(ws_handler.clone(), requester_id.clone(), Some(update_info)).await?;
 
     Ok(())
 }
@@ -468,8 +453,7 @@ pub async fn download_file(
             old_percent = percent;
             update_info.percent = percent;
             ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-                info: Some(update_info.clone()), 
-                id: requester_id.clone() 
+                info: Some(update_info.clone())
             })).await?;
         }
     }
@@ -522,7 +506,7 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
 }
 
 pub async fn register_events(
-    event_bus: &Arc<EventBus>, 
+    _event_bus: &Arc<EventBus>, 
     ws_handler: &Arc<WebSocketHandler>
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let ws_handler_app = ws_handler.clone();
@@ -573,10 +557,7 @@ pub async fn check_app_update(
     if cfg!(debug_assertions) {
         log::debug!("!!! 디버그 모드입니다 !!!");
         log::debug!("현재 버전을 계속 사용합니다!");
-        ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-            info: None, 
-            id: client_id.clone() 
-        })).await?;
+        send_app_update_info(ws_handler.clone(), client_id.clone(), None).await?;
         return Ok(());
     }
 
@@ -589,20 +570,14 @@ pub async fn check_app_update(
             Err(e) => {
                 log::error!("{}", e);
                 log::debug!("현재 버전을 계속 사용합니다!");
-                ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-                    info: None, 
-                    id: client_id.clone() 
-                })).await?;
+                send_app_update_info(ws_handler.clone(), client_id.clone(), None).await?;
                 Err(e)
             }
         }
     } else {
         log::debug!("자동 업데이트가 꺼져있습니다.");
         log::debug!("현재 버전을 계속 사용합니다!");
-        ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-            info: None, 
-            id: client_id.clone() 
-        })).await?;
+        send_app_update_info(ws_handler.clone(), client_id.clone(), None).await?;
         Ok(())
     }
 }
@@ -622,23 +597,18 @@ pub async fn check_lib_update(
             Err(e) => {
                 log::error!("{}", e);
                 log::debug!("현재 버전을 계속 사용합니다!");
-                ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-                    info: None, 
-                    id: client_id.clone() 
-                })).await?;
+                send_lib_update_info(ws_handler.clone(), client_id.clone(), None).await?;
                 Err(e)
             }
         }
     } else {
         log::debug!("자동 업데이트가 꺼져있습니다.");
         log::debug!("현재 버전을 계속 사용합니다!");
-        ws_handler.send_to(client_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-            info: None, 
-            id: client_id.clone() 
-        })).await?;
+        send_lib_update_info(ws_handler.clone(), client_id.clone(), None).await?;
         Ok(())
     }
 }
+
 
 pub async fn send_app_update_info(
     ws_handler: WebSocketHandler,
@@ -658,8 +628,7 @@ pub async fn send_app_update_info(
     });
     
     ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-        info: Some(info), 
-        id: requester_id.clone() 
+        info: Some(info)
     })).await?;
     Ok(())
 }
@@ -692,8 +661,7 @@ pub async fn send_lib_update_info(
     }
     
     ws_handler.send_to(requester_id.clone(), SendEvent::from(WsEvent::UpdateInfo { 
-        info: Some(info), 
-        id: requester_id.clone() 
+        info: Some(info)
     })).await?;
     Ok(())
 }

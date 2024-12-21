@@ -1,5 +1,4 @@
-use crate::{models::{RequestEvent, SendEvent}, 
-    websocket::{Client, Clients}}
+use crate::{app::get_app_state, models::{RequestEvent, SendEvent}, websocket::{Client, Clients}}
 ;
 use futures::{FutureExt, StreamExt, Future};
 use serde_json::from_str;
@@ -10,8 +9,6 @@ use warp::ws::{Message, WebSocket};
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-
-use super::WebSocketError;
 
 type MessageHandler = Box<
     dyn Fn(String, RequestEvent) -> futures::future::BoxFuture<'static, Result<(), Box<dyn Error + Send + Sync>>> 
@@ -101,7 +98,6 @@ impl WebSocketHandler {
         log::debug!("broadcast event: {:?}", event);
         let message = Message::text(serde_json::to_string(&event)
                     .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?);
-        log::debug!("message: {:?}", message);
         for (_, client) in self.clients.read().await.iter() {
             if let Some(sender) = &client.sender {
                 sender.send(Ok(message.clone()))
@@ -111,13 +107,13 @@ impl WebSocketHandler {
         Ok(())
     }
 
-    pub async fn broadcast_to(&self, client_ids: Vec<String>, event: SendEvent) -> Result<(), warp::Rejection> {
+    pub async fn _broadcast_to(&self, client_ids: Vec<String>, event: SendEvent) -> Result<(), Box<dyn Error + Send + Sync>> {
         let message = Message::text(serde_json::to_string(&event)
-                    .map_err(|e| warp::reject::custom(WebSocketError(e.to_string())))?);
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?);
         for client_id in client_ids {
             if let Some(sender) = self.clients.read().await.get(&client_id).and_then(|c| c.sender.as_ref()) {
                 sender.send(Ok(message.clone()))
-                    .map_err(|e| warp::reject::custom(WebSocketError(e.to_string())))?;
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
             }
         }
         Ok(())
@@ -165,7 +161,13 @@ pub async fn client_connection(
     let mut clients_guard = clients.write().await;
     clients_guard.remove(&id);
     log::debug!("{} disconnected", id);
-    
+    #[cfg(debug_assertions)]
+    if clients_guard.is_empty() {
+        // 디버그 모드에서는, 프로세스는 종료하지 않고 CVAT의 track 스레드를 종료하도록 유도함
+        log::debug!("No clients connected, terminating track thread");
+        let state = get_app_state();
+        state.set_tracking(false);
+    }
     #[cfg(not(debug_assertions))]
     if clients_guard.is_empty() {
         terminate_process();

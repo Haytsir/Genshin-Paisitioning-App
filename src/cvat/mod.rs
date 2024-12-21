@@ -14,8 +14,8 @@ pub use tracking::Tracker;
 pub use features::*;
 
 use crate::models::{SendEvent, WsEvent};
-use crate::{app::path::get_lib_path};
-use crate::events::{EventBus};
+use crate::app::path::get_lib_path;
+use crate::events::EventBus;
 use std::error::Error;
 use crate::websocket::WebSocketHandler;
 use std::sync::Arc;
@@ -23,7 +23,7 @@ use crate::app::get_app_state;
 
 pub fn initialize_cvat() -> Result<()> {
     log::debug!("Initialize Cvat");
-    let mut state = get_app_state();
+    let state = get_app_state();
     
     // 이미 인스턴스가 있다면 그대로 사용
     if state.get_instance().is_some() {
@@ -51,7 +51,7 @@ pub async fn register_events(
     log::debug!("Register Cvat Events");
     let event_bus1 = event_bus.clone();
     let ws_handler1 = ws_handler.clone();
-    ws_handler.register("init", move |id, _| {
+    ws_handler.register("init", move |_, _| {
         let event_bus = event_bus1.clone();
         let ws_handler = ws_handler1.clone();
         async move {
@@ -63,7 +63,7 @@ pub async fn register_events(
         }
     }).await?;
 
-    ws_handler.register("uninit", |id, _| async move {
+    ws_handler.register("uninit", |_, _| async move {
         unload_cvat().map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         Ok(())
     }).await?;

@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
 use crate::cvat::bindings::cvAutoTrack;
@@ -13,7 +14,7 @@ pub struct AppInfo {
     pub configs: AppConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct AppConfig {
     pub auto_app_update: bool,
     pub auto_lib_update: bool,
@@ -49,9 +50,8 @@ pub struct UpdateInfo {
 }
 
 // 내부 앱 이벤트 (컨텍스트 간 통신)
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 #[serde(untagged)]
-#[derive(Debug, Clone)]
 pub enum AppEvent {
     Init(),
     Uninit(),

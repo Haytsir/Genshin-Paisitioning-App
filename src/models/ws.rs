@@ -18,7 +18,7 @@ pub enum DataTypes {
     TrackData(TrackData),
     AppInfo(AppInfo),
     AppConfig(AppConfig),
-    UpdateInfo(UpdateInfo, String),
+    UpdateInfo(UpdateInfo),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -35,7 +35,8 @@ pub enum WsEvent {
     Track { data: TrackData },
     CheckLibUpdate { id: String },
     CheckAppUpdate { id: String },
-    UpdateInfo { info: Option<UpdateInfo>, id: String },
+    #[serde(rename = "update")]
+    UpdateInfo { info: Option<UpdateInfo> },
 }
 
 impl From<WsEvent> for SendEvent {
@@ -44,8 +45,8 @@ impl From<WsEvent> for SendEvent {
         let data = match &event {
             WsEvent::Track { data } => Some(DataTypes::TrackData(data.clone())),
             WsEvent::Config { config, id: _ } => Some(DataTypes::AppConfig(config.clone())),
-            WsEvent::UpdateInfo { info, id } if info.is_some() => {
-                Some(DataTypes::UpdateInfo(info.clone().unwrap(), id.clone()))
+            WsEvent::UpdateInfo { info } if info.is_some() => {
+                Some(DataTypes::UpdateInfo(info.clone().unwrap()))
             },
             _ => None
         };

@@ -1,11 +1,9 @@
 use super::Tracker;
-use crate::{events::EventBus, models::WsEvent, websocket::WebSocketHandler};
-use config::Config;
-use crate::models::AppConfig;
+use crate::{events::EventBus, websocket::WebSocketHandler};
 use crate::app::get_app_state;
 use std::sync::Arc;
 
-pub fn start_track_thread(event_bus: Arc<EventBus>, ws_handler: Arc<WebSocketHandler>) -> bool {
+pub fn start_track_thread(_event_bus: Arc<EventBus>, ws_handler: Arc<WebSocketHandler>) -> bool {
     log::debug!("Start Track Thread");
     if super::initialize_cvat().is_err() {
         return false;

@@ -1,38 +1,13 @@
+#[allow(dead_code)]
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::error::Error;
-use crate::models::{AppEvent, WsEvent};
-
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub enum EventType {
-    Init,
-    Uninit,
-    GetConfig(String),
-    SetConfig(String),
-    CheckAppUpdate(String, bool),
-    CheckLibUpdate(String, bool),
-    Track,
-}
-
-impl From<AppEvent> for EventType {
-    fn from(event: AppEvent) -> Self {
-        match event {
-            AppEvent::Init() => EventType::Init,
-            AppEvent::Uninit() => EventType::Uninit,
-            AppEvent::GetConfig(id) => EventType::GetConfig(id),
-            AppEvent::SetConfig(_, id) => EventType::SetConfig(id),
-            AppEvent::CheckAppUpdate(id, force) => EventType::CheckAppUpdate(id, force),
-            AppEvent::CheckLibUpdate(id, force) => EventType::CheckLibUpdate(id, force),
-            _ => EventType::Track, // 기본값 처리
-        }
-    }
-}
-
-type EventHandler = Box<dyn Fn(&EventType) -> Result<(), Box<dyn Error>> + Send + Sync>;
+use crate::models::AppEvent;
+type EventHandler = Box<dyn Fn(&AppEvent) -> Result<(), Box<dyn Error>> + Send + Sync>;
 
 pub struct EventBus {
-    handlers: Arc<RwLock<HashMap<EventType, Vec<EventHandler>>>>,
+    handlers: Arc<RwLock<HashMap<AppEvent, Vec<EventHandler>>>>,
 }
 
 impl EventBus {
@@ -42,7 +17,7 @@ impl EventBus {
         }
     }
 
-    pub async fn emit(&self, event: &EventType) -> Result<(), Box<dyn Error>> {
+    pub async fn emit(&self, event: &AppEvent) -> Result<(), Box<dyn Error>> {
         let handlers = self.handlers.read().await;
         if let Some(event_handlers) = handlers.get(event) {
             for handler in event_handlers {

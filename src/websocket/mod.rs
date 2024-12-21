@@ -1,22 +1,15 @@
-use std::thread;
-use crossbeam_channel::Receiver;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use warp::http::Method;
-use warp::{ws::Message, Filter, Rejection};
-use crate::events::EventBus;
-use crate::models::WsEvent;
+use warp::{ws::Message, Filter};
 use std::error::Error;
 
 mod ws;
 mod handler;
 
 pub use ws::WebSocketHandler;
-pub use handler::*;
-
-type Result<T> = std::result::Result<T, Rejection>;
 /*
  * Client를 Hash맵에 저장해 track하여 연결 유지
  * 단, 비동기 작업을 할 것이므로(클라이언트 등록, 메세지 전송 등..)
@@ -32,11 +25,6 @@ pub struct Client {
     pub user_id: usize,
     pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
 }
-
-#[derive(Debug)]
-struct WebSocketError(String);
-
-impl warp::reject::Reject for WebSocketError {}
 
 pub async fn serve(ws_handler: Arc<WebSocketHandler>) -> std::result::Result<(), Box<dyn Error>> {  
     // GET /health : 서비스가 활성 상태인지 확인하기 위한 Health check 라우트.

@@ -13,7 +13,7 @@ impl fmt::Display for CvatError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InitializationError(msg) => write!(f, "Initialization error: {}", msg),
-            Self::TrackingError(msg) => write!(f, "Tracking error: {}", msg),
+            Self::TrackingError(msg) => msg.fmt(f),
             Self::LibraryError(msg) => write!(f, "Library error: {}", msg),
             Self::LockError(msg) => write!(f, "Lock error: {}", msg),
         }
@@ -38,4 +38,3 @@ impl From<Box<dyn Error + Send + Sync>> for CvatError {
 }
 
 pub type Result<T> = std::result::Result<T, CvatError>;
-pub type StdResult<T> = std::result::Result<T, Box<dyn Error>>; 

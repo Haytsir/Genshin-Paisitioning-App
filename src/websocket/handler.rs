@@ -1,13 +1,9 @@
 use std::sync::Arc;
 
-use crate::models::{AppConfig, UpdateInfo};
-
 use crate::websocket::{Client, Clients};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use warp::{http::StatusCode, reply::json, ws::Message, Reply};
-
-use crate::models::TrackData;
 
 use super::ws::client_connection;
 use super::WebSocketHandler;
@@ -43,58 +39,6 @@ pub async fn publish_handler(body: Event, clients: Clients) -> Result<impl Reply
                 let _ = sender.send(Ok(Message::text(body.message.clone())));
             }
         });
-
-    Ok(StatusCode::OK)
-}
-
-pub async fn send_config(config: AppConfig, clients: Clients, id: String) -> Result<impl Reply, warp::Rejection> {
-    let client = clients.read().await.get(&id).cloned().unwrap();
-    if let Some(sender) = &client.sender {
-        let _ = sender.send(Ok(Message::text(format!(
-            "{{\"event\": \"config\", \"data\": {}}}",
-            serde_json::to_string(&config).unwrap()
-        ))));
-    }
-    Ok(StatusCode::OK)
-}
-
-pub async fn send_update_info(
-    data: UpdateInfo,
-    clients: Clients,
-    id: String,
-) -> Result<impl Reply, warp::Rejection> {
-    let client = clients.read().await.get(&id).cloned().unwrap();
-    if let Some(sender) = &client.sender {
-        let _ = sender.send(Ok(Message::text(format!(
-            "{{\"event\": \"update\", \"data\": {}}}",
-            serde_json::to_string(&data).unwrap()
-        ))));
-    }
-    Ok(StatusCode::OK)
-}
-
-pub async fn broadcast_init(clients: Clients) -> Result<impl Reply, warp::Rejection> {
-    log::debug!("Broadcast Init");
-    clients.read().await.iter().for_each(|(_, client)| {
-        if let Some(sender) = &client.sender {
-        let _ = sender.send(Ok(Message::text(format!(
-            "{{\"event\": \"ready\"}}",
-            ))));
-        }
-    });
-    Ok(StatusCode::OK)
-}
-
-
-pub async fn broadcast_track(data: TrackData, clients: Clients) -> Result<impl Reply, warp::Rejection> {
-    clients.read().await.iter().for_each(|(_, client)| {
-        if let Some(sender) = &client.sender {
-            let _ = sender.send(Ok(Message::text(format!(
-                "{{\"event\": \"track\", \"data\": {}}}",
-                serde_json::to_string(&data).unwrap()
-            ))));
-        }
-    });
 
     Ok(StatusCode::OK)
 }
@@ -143,11 +87,3 @@ pub async fn ws_handler(
 pub async fn health_handler() -> Result<impl Reply, warp::Rejection> {
     Ok(StatusCode::OK)
 }
-
-#[derive(Debug)]
-pub enum CustomError {
-    UPDATE_FAILED,
-    CONFIG_ERROR,
-}
-
-impl warp::reject::Reject for CustomError {}

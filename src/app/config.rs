@@ -3,13 +3,12 @@ use std::error::Error;
 use std::path::PathBuf;
 use crate::app::path;
 
-use crate::events::{EventBus};
+use crate::events::EventBus;
 use crate::models::{AppConfig, RequestDataTypes, RequestEvent, SendEvent, WsEvent};
 use crate::websocket::WebSocketHandler;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio::sync::broadcast;
 use once_cell::sync::OnceCell;
 
 // 전역 Config 상태 관리
@@ -133,7 +132,7 @@ pub fn create_config_file_if_not_exist(target_path: &PathBuf) -> Result<(), std:
 }
 
 // 이벤트 등록
-pub async fn register_events(event_bus: &Arc<EventBus>, ws_handler: &Arc<WebSocketHandler>) -> Result<(), Box<dyn Error + Send + Sync>> { 
+pub async fn register_events(_event_bus: &Arc<EventBus>, ws_handler: &Arc<WebSocketHandler>) -> Result<(), Box<dyn Error + Send + Sync>> { 
     let ws_handler_get = ws_handler.clone();
     ws_handler.register("getConfig", move |id, _| {
         let ws_handler = ws_handler_get.clone();
