@@ -170,6 +170,6 @@ pub async fn client_connection(
     }
     #[cfg(not(debug_assertions))]
     if clients_guard.is_empty() {
-        terminate_process();
+        crate::app::terminate_process();
     }
 }
