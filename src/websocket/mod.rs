@@ -1,18 +1,15 @@
-use crossbeam_channel::{Receiver, Sender};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use warp::http::Method;
-use warp::{ws::Message, Filter, Rejection};
+use warp::{ws::Message, Filter};
+use std::error::Error;
 
-use crate::models::{AppEvent, WsEvent};
-use std::thread;
-
-pub(crate) mod handler;
 mod ws;
+mod handler;
 
-type Result<T> = std::result::Result<T, Rejection>;
+pub use ws::WebSocketHandler;
 /*
  * Client를 Hash맵에 저장해 track하여 연결 유지
  * 단, 비동기 작업을 할 것이므로(클라이언트 등록, 메세지 전송 등..)
@@ -26,14 +23,10 @@ type Clients = Arc<RwLock<HashMap<String, Client>>>; // Arc<RwLock<HashMap<Strin
 #[derive(Debug, Clone)]
 pub struct Client {
     pub user_id: usize,
-    //    pub topics: Vec<String>,
     pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
 }
 
-#[tokio::main]
-pub async fn serve(sender: Sender<AppEvent>, receiver: Receiver<WsEvent>) {
-    let clients: Clients = Arc::new(RwLock::new(HashMap::new()));
-
+pub async fn serve(ws_handler: Arc<WebSocketHandler>) -> std::result::Result<(), Box<dyn Error>> {  
     // GET /health : 서비스가 활성 상태인지 확인하기 위한 Health check 라우트.
     let health_route = warp::path!("health").and_then(handler::health_handler);
 
@@ -55,27 +48,27 @@ pub async fn serve(sender: Sender<AppEvent>, receiver: Receiver<WsEvent>) {
     let register_routes = register
         .and(warp::post())
         .and(warp::body::json())
-        .and(with_clients(clients.clone()))
+        .and(with_clients(ws_handler.clients.clone()))
         .and_then(handler::register_handler)
         // DELETE /register/{client_id} : ID를 통해 클라이언트를 등록 해제하기 위한 라우트.
         .or(register
             .and(warp::delete())
             .and(warp::path::param())
-            .and(with_clients(clients.clone()))
+            .and(with_clients(ws_handler.clients.clone()))
             .and_then(handler::unregister_handler));
 
     // POST /publish — 클라이언트들에 이벤트를 Broadcasts 하기위한 라우트.
     let publish = warp::path!("publish")
         .and(warp::body::json())
-        .and(with_clients(clients.clone()))
+        .and(with_clients(ws_handler.clients.clone()))
         .and_then(handler::publish_handler);
 
     // GET /ws — WebSocket 엔드포인트
     let ws_route = warp::path("ws")
-        .and(warp::ws()) // HTTP연결을 WebSocket연결로 Upgrade하기 위한 필터
+        .and(warp::ws())
         .and(warp::path::param())
-        .and(with_clients(clients.clone()))
-        .and(with_sender(sender.clone()))
+        .and(with_clients(ws_handler.clients.clone()))
+        .and(with_ws_handler(ws_handler.clone()))
         .and_then(handler::ws_handler);
 
     // 라우터를 등록하고, CORS를 지원하도록 함
@@ -85,39 +78,9 @@ pub async fn serve(sender: Sender<AppEvent>, receiver: Receiver<WsEvent>) {
         .or(publish)
         .with(cors);
 
-    thread::spawn(move || {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        loop {
-            let r = receiver.clone();
-            match r.recv() {
-                Ok(WsEvent::Config(x, id)) => {
-                    log::debug!("Received: {:?}", x);
-                    let _ = runtime
-                        .handle()
-                        .block_on(handler::send_config(x, clients.clone(), id));
-                }
-                // 다른 모듈로부터 받은 전송 데이터를 뿌려준다.
-                Ok(WsEvent::UpdateInfo(x, id)) => {
-                    log::debug!("Received: {:?}", x);
-                    let _ = runtime.handle().block_on(handler::send_update_info(
-                        x,
-                        clients.clone(),
-                        id,
-                    ));
-                }
-                Ok(WsEvent::Track(x)) => {
-                    let _ = runtime
-                        .handle()
-                        .block_on(handler::broadcast_track(x, clients.clone()));
-                }
-                Ok(_) => {}
-                Err(_) => {} //panic!("panic happened"),
-            }
-        }
-    });
-
     // 서버 시작
     warp::serve(routes).run(([127, 0, 0, 1], 32332)).await;
+    Ok(())
 }
 
 // 라우트에 접근했을 때, Client정보를 handler에 전달하기 위한 미들웨어(필터) 용도의 함수
@@ -125,8 +88,8 @@ fn with_clients(clients: Clients) -> impl Filter<Extract = (Clients,), Error = I
     warp::any().map(move || clients.clone())
 }
 
-fn with_sender(
-    sender: Sender<AppEvent>,
-) -> impl Filter<Extract = (Sender<AppEvent>,), Error = Infallible> + Clone {
-    warp::any().map(move || sender.clone())
+fn with_ws_handler(
+    ws_handler: Arc<WebSocketHandler>,
+) -> impl Filter<Extract = (Arc<WebSocketHandler>,), Error = Infallible> + Clone {
+    warp::any().map(move || ws_handler.clone())
 }

@@ -1,23 +1,132 @@
-use crate::app::terminate_process;
-use crate::models::RequestEvent;
-use crate::{
-    models::{AppEvent, RequestDataTypes},
-    websocket::{Client, Clients},
-};
-use crossbeam_channel::Sender;
-use futures::{FutureExt, StreamExt};
+use crate::{app::get_app_state, models::{RequestEvent, SendEvent}, websocket::{Client, Clients}}
+;
+use futures::{FutureExt, StreamExt, Future};
 use serde_json::from_str;
+use std::error::Error;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::{Message, WebSocket};
+use std::sync::Arc;
+use std::collections::HashMap;
+use tokio::sync::RwLock;
+
+type MessageHandler = Box<
+    dyn Fn(String, RequestEvent) -> futures::future::BoxFuture<'static, Result<(), Box<dyn Error + Send + Sync>>> 
+    + Send 
+    + Sync
+>;
+
+#[derive(Clone)]
+pub struct WebSocketHandler {
+    handlers: Arc<RwLock<HashMap<String, MessageHandler>>>,
+    pub clients: Clients,
+}
+
+impl WebSocketHandler {
+    pub fn new() -> Self {
+        Self {
+            handlers: Arc::new(RwLock::new(HashMap::new())),
+            clients: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub async fn register<F, Fut>(&self, event: &str, handler: F) -> Result<(), Box<dyn Error + Send + Sync>>
+    where
+        F: Fn(String, RequestEvent) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send + 'static,
+    {
+        log::debug!("이벤트 등록 시작: {}", event);
+        {
+            let mut handlers = self.handlers.write().await;
+            handlers.insert(event.to_string(), Box::new(move |id, req| {
+                Box::pin(handler(id.to_string(), req))
+            }));
+        }        
+        Ok(())
+    }
+
+    pub async fn handle_message(&self, id: &str, msg: Message) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let message = msg.to_str().map_err(|e| {
+            let sanitized = msg.as_bytes()
+                .iter()
+                .take(100)  // 처음 100바이트만 로깅
+                .map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '?' })
+                .collect::<String>();
+            
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData, 
+                format!("Invalid message format: '{}...' (error: {:?})", sanitized, e)
+            )
+        })?;
+
+        log::debug!("handle_message from {} : {}", id, message);
+
+        let req: RequestEvent = match from_str(message) {
+            Ok(v) => v,
+            Err(e) => {
+                log::debug!("error while parsing message to request: {}", e);
+                return Ok(());
+            }
+        };
+        log::debug!("event: {}", req.event);
+        log::debug!("data: {:#?}", req.data);
+
+        let handlers = self.handlers.read().await;
+
+        if let Some(handler) = handlers.get(&req.event) {
+            log::debug!("Found handler for event: {}", req.event);
+            handler(id.to_string(), req).await
+        } else {
+            log::debug!("No handler found for event: {}", req.event);
+            Ok(())
+        }
+    }
+
+    pub async fn send_to(&self, client_id: String, event: SendEvent) -> Result<(), Box<dyn Error + Send + Sync>> {
+        log::debug!("send event: {:?}", event);
+        if let Some(client) = self.clients.read().await.get(&client_id) {
+            if let Some(sender) = &client.sender {
+                let message = Message::text(serde_json::to_string(&event)?);
+                sender.send(Ok(message))
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn broadcast(&self, event: SendEvent) -> Result<(), Box<dyn Error + Send + Sync>> {
+        log::debug!("broadcast event: {:?}", event);
+        let message = Message::text(serde_json::to_string(&event)
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?);
+        for (_, client) in self.clients.read().await.iter() {
+            if let Some(sender) = &client.sender {
+                sender.send(Ok(message.clone()))
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn _broadcast_to(&self, client_ids: Vec<String>, event: SendEvent) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let message = Message::text(serde_json::to_string(&event)
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?);
+        for client_id in client_ids {
+            if let Some(sender) = self.clients.read().await.get(&client_id).and_then(|c| c.sender.as_ref()) {
+                sender.send(Ok(message.clone()))
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            }
+        }
+        Ok(())
+    }
+}
 
 pub async fn client_connection(
     ws: WebSocket,
     id: String,
     clients: Clients,
     mut client: Client,
-    sender: Sender<AppEvent>,
-) {
+    ws_handler: Arc<WebSocketHandler>,
+) {    
     let (sink, mut stream) = ws.split();
     let (tx, rx) = mpsc::unbounded_channel();
 
@@ -32,110 +141,35 @@ pub async fn client_connection(
     clients.write().await.insert(id.clone(), client);
 
     log::debug!("{} connected", id);
+    
     while let Some(result) = stream.next().await {
-        let msg = match result {
-            Ok(msg) => msg,
+        match result {
+            Ok(msg) => {
+                if let Err(e) = ws_handler.handle_message(&id, msg).await {
+                    log::error!("Error handling message: {}", e);
+                    break;
+                }
+            }
             Err(e) => {
                 log::debug!("error receiving ws message for id: {}): {}", id.clone(), e);
                 break;
             }
         };
-        client_msg(&id, msg, &clients, sender.clone());
     }
 
-    clients.write().await.remove(&id);
+    // 클라이언트 연결이 종료되면 안전하게 제거
+    let mut clients_guard = clients.write().await;
+    clients_guard.remove(&id);
     log::debug!("{} disconnected", id);
-    // 연결이 종료되어 클라이언트가 0명이라면 프로그램도 종료한다.
-    if clients.write().await.len() == 0 {
-        terminate_process();
+    #[cfg(debug_assertions)]
+    if clients_guard.is_empty() {
+        // 디버그 모드에서는, 프로세스는 종료하지 않고 CVAT의 track 스레드를 종료하도록 유도함
+        log::debug!("No clients connected, terminating track thread");
+        let state = get_app_state();
+        state.set_tracking(false);
     }
-}
-
-// 클라이언트로부터 메세지를 받았을 경우의 최초 처리
-fn client_msg(id: &str, msg: Message, _clients: &Clients, sender: Sender<AppEvent>) {
-    log::debug!("received message from {}: {:?}", id, msg);
-    let message = match msg.to_str() {
-        Ok(v) => v,
-        Err(_) => return,
-    };
-
-    let req: RequestEvent = match from_str(message) {
-        Ok(v) => v,
-        Err(e) => {
-            log::debug!("error while parsing message to request: {}", e);
-            return;
-        }
-    };
-    match req.event.as_str() {
-        "init" => {
-            log::debug!("init!");
-            let res = sender.send(AppEvent::Init());
-            match res {
-                Ok(_) => {}
-                Err(e) => {
-                    log::error!("Failed INIT: {e}")
-                }
-            }
-        }
-        "uninit" => {
-            log::debug!("uninit!");
-            let res = sender.send(AppEvent::Uninit());
-            match res {
-                Ok(_) => {}
-                Err(e) => {
-                    log::error!("Failed UNINIT: {e}")
-                }
-            }
-        }
-        "getConfig" => {
-            log::debug!("getConfig!");
-            let _ = sender.send(AppEvent::GetConfig(id.to_string()));
-        }
-        "setConfig" => {
-            log::debug!("setConfig!");
-            let _: RequestDataTypes = match req.data {
-                Some(RequestDataTypes::AppConfig(app_config)) => {
-                    log::debug!("setConfig: {:?}", app_config);
-                    let _ = sender.send(AppEvent::SetConfig(app_config, id.to_string()));
-                    return;
-                }
-                Some(_) => return,
-                None => {
-                    log::error!("setConfig: None Data");
-                    return;
-                }
-            };
-        }
-        "checkAppUpdate" => {
-            log::debug!("checkAppUpdate!");
-            let force = match req.data {
-                Some(RequestDataTypes::CheckAppUpdate(force)) => force,
-                Some(_) => false,
-                None => false,
-            };
-            let res = sender.send(AppEvent::CheckAppUpdate(id.to_string(), force));
-            match res {
-                Ok(_) => {}
-                Err(e) => {
-                    log::error!("Failed checkAppUpdate: {e}")
-                }
-            }
-        }
-        "checkLibUpdate" => {
-            log::debug!("checkLibUpdate!");
-            let force = match req.data {
-                Some(RequestDataTypes::CheckLibUpdate(force)) => force,
-                Some(_) => false,
-                None => false,
-            };
-            let res = sender.send(AppEvent::CheckLibUpdate(id.to_string(), force));
-            match res {
-                Ok(_) => {}
-                Err(e) => {
-                    log::error!("Failed checkLibUpdate: {e}")
-                }
-            }
-        }
-        _ => {}
+    #[cfg(not(debug_assertions))]
+    if clients_guard.is_empty() {
+        terminate_process();
     }
 }
