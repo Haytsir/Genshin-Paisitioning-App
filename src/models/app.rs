@@ -55,6 +55,7 @@ pub struct UpdateInfo {
 pub enum AppEvent {
     Init(),
     Uninit(),
+    DoneUninit(),
     GetConfig(String),
     SetConfig(AppConfig, String),
     CheckLibUpdate(String, bool),

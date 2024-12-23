@@ -1,7 +1,7 @@
 use log::debug;
 use serde_json::Value;
 use crate::app::terminate_process;
-use crate::models::{AppConfig, RequestDataTypes, RequestEvent, SendEvent, WsEvent};
+use crate::models::{AppConfig, AppEvent, RequestDataTypes, RequestEvent, SendEvent, WsEvent};
 use crate::models::UpdateInfo;
 use crate::views::confirm::confirm_dialog;
 use crate::app::path;
@@ -9,7 +9,6 @@ use crate::websocket::WebSocketHandler;
 use std::collections::HashMap;
 use std::fs::{File, self};
 use std::path::PathBuf;
-use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
 use crate::events::EventBus;
@@ -116,7 +115,7 @@ pub async fn download_app(
     ws_handler: WebSocketHandler, 
     requester_id: String, 
     force: bool
-) -> std::result::Result<(), Box<dyn Error + Send + Sync>> {
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     debug!("download_app");
     let json: Value = fetch_app_version_on_github("Haytsir", "Genshin-Paisitioning-App", force).await?;
     let cache_dir = path::get_cache_path();
@@ -164,65 +163,48 @@ pub async fn download_app(
 
         // github에서 받은 파일이 .zip 확장자인 경우
         if asset_name.ends_with(".zip") {
-            // 파일 다운로드 및 저장
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            // arch_path: .zip 파일의 경로
+            // 파일 다운로드 경로
             let arch_path = cache_dir.join(asset_name);
-            let res = runtime
-                .handle()
-                .block_on(download_file(
-                    asset_url,
-                    &arch_path,
-                    ws_handler.clone(),
-                    update_info.clone(),
-                    requester_id.clone(),
-                ))
-                .and_then(|()| {
-                    std::thread::sleep(Duration::from_millis(1000));
+            
+            // 파일 다운로드
+            download_file(
+                asset_url,
+                &arch_path,
+                ws_handler.clone(),
+                update_info.clone(),
+                requester_id.clone(),
+            ).await?;
 
-                    // 추출할 파일 확장자와, 대상 경로를 가진 해쉬맵 구성
-                    let mut mappings = HashMap::new();
-                    log::debug!("{}", arch_path.display());
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
-                    mappings.insert("exe", &cache_dir);
-                    extract_files_from_zip(&arch_path, mappings)?;
-                    return Ok(());
-                });
-            match res {
-                Ok(_) => {
-                    let remove_res = std::fs::remove_file(cache_dir.join(asset_name));
-                    match remove_res {
-                        Ok(_) => {}
-                        Err(e) => {
-                            log::debug!("{}", e);
-                        }
-                    }
+            // 파일 추출 및 처리
+            let mut mappings = HashMap::new();
+            mappings.insert("exe", &cache_dir);
+            extract_files_from_zip(&arch_path, mappings)?;
 
-                    let current_exe = std::env::current_exe().unwrap();
-                    let exe_name = current_exe.file_name().unwrap();
+            // 파일 정리 및 업데이트
+            let current_exe = std::env::current_exe()?;
+            let exe_name = current_exe.file_name().unwrap();
 
-                    log::debug!("Updating...");
-                    self_replace::self_replace(&cache_dir.join(exe_name))?;
-                    fs::remove_file(&cache_dir.join(exe_name))?;
-                    let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 업데이트를 완료했습니다.", false);
+            log::debug!("Updating...");
+            self_replace::self_replace(&cache_dir.join(exe_name))?;
+            fs::remove_file(&cache_dir.join(exe_name))?;
+            
+            let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), "GPA 업데이트를 완료했습니다.", false);
 
-                    let mut update_info = update_info.clone();
-                    update_info.done = true;
-                    send_app_update_info(ws_handler.clone(), requester_id.clone(), Some(update_info)).await?;
+            let mut update_info = update_info.clone();
+            update_info.done = true;
+            send_app_update_info(ws_handler.clone(), requester_id.clone(), Some(update_info)).await?;
 
-                    std::thread::sleep(Duration::from_millis(1000));
-                    terminate_process();
-                }
-                Err(e) => {
-                    log::debug!("{}", e)
-                }
-            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            terminate_process();
         }
     }
     return Ok(());
 }
 
 pub async fn download_cvat(
+    event_bus: &Arc<EventBus>,
     ws_handler: WebSocketHandler, 
     requester_id: String, 
     force: bool
@@ -241,7 +223,7 @@ pub async fn download_cvat(
     // 업데이트를 요한 유저에게 보낼 update info 생성
     let mut update_info = UpdateInfo {
         target_type: "cvat".to_string(),
-        current_version: version.to_string(),
+        current_version: version,
         target_version: release_name.to_string(),
         display_version_name: release_display_name.to_string(),
         downloaded: 0,
@@ -255,7 +237,7 @@ pub async fn download_cvat(
         // 버전 비교, 최신 버전이 자가 더 낮은 경우가 있으니 파일 수정 시간으로 비교
         let last_file_modified = get_file_modified_time(&lib_path.join("cvAutoTrack.dll"))?;
         let last_lib_published = parse_iso8601(json["published_at"].as_str().unwrap_or(""))?;
-
+        
         if last_file_modified > last_lib_published/* compare_versions(&version, json["tag_name"].as_str().unwrap_or("")) */ {
             log::debug!("CVAT가 최신 버전입니다. ({})", release_name);
             update_info.done = true;
@@ -270,10 +252,10 @@ pub async fn download_cvat(
             );
         }
     }
-
-    crate::cvat::unload_cvat().map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-
-    // 첫 번째 첨부 파일 가져오기
+    log::debug!("CVAT 언로드 시도");
+    event_bus.emit(&AppEvent::Uninit()).await?;
+    
+    // 첨부 파일 처리
     let assets = &json["assets"];
     for asset in assets.as_array().unwrap() {
         let asset_url = asset["browser_download_url"].as_str().unwrap();
@@ -285,72 +267,58 @@ pub async fn download_cvat(
 
         // github에서 은 파일이 .zip 확장자인 경우
         if asset_name.ends_with(".zip") {
-            // 파일 다운로드 및 저장
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            // arch_path: .zip 파일의 경로
             let arch_path = cache_dir.join(asset_name);
             let target_path = lib_path.clone();
-            let res = runtime
-                .handle()
-                .block_on(download_file(
-                    asset_url,
-                    &arch_path,
-                    ws_handler.clone(),
-                    update_info,
-                    requester_id.clone(),
-                ))
-                .and_then(|()| {
-                    std::thread::sleep(Duration::from_millis(1000));
+            
+            // 파일 다운로드
+            download_file(
+                asset_url,
+                &arch_path,
+                ws_handler.clone(),
+                update_info.clone(),
+                requester_id.clone(),
+            ).await?;
 
-                    // 추출할 파일 확장자와, 대상 경로를 가진 해쉬맵 구성
-                    let mut mappings = HashMap::new();
-                    log::debug!("{}", arch_path.display());
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
-                    mappings.insert("dll", &target_path);
-                    //                mappings.insert("md5", &lib_path);
-                    //                mappings.insert("tag", &lib_path);
-                    std::fs::create_dir_all(lib_path.clone())?;
-                    extract_files_from_zip(&arch_path, mappings)?;
-                    Ok(())
-                });
-            match res {
-                Ok(_) => {
-                    let remove_res = std::fs::remove_file(cache_dir.join(asset_name));
-                    match remove_res {
-                        Ok(_) => {}
-                        Err(e) => {
-                            log::debug!("{}", e);
-                        }
-                    }
-                }
+            // 파일 추출
+            let mut mappings = HashMap::new();
+            mappings.insert("dll", &target_path);
+            std::fs::create_dir_all(lib_path.clone())?;
+            extract_files_from_zip(&arch_path, mappings)?;
+            
+            // 임시 파일 정리
+            if let Err(e) = std::fs::remove_file(&arch_path) {
+                log::debug!("Failed to remove temp file: {}", e);
+            }
+            
+            // 파일 저장
+            let remove_res = std::fs::remove_file(cache_dir.join(asset_name));
+            match remove_res {
+                Ok(_) => {}
                 Err(e) => {
-                    log::debug!("{}", e)
+                    log::debug!("{}", e);
                 }
             }
         } else if asset_name.ends_with(".md5") || asset_name.ends_with(".tag") {
-            // 파일 다운로드  저장
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            // arch_path: .7z 파일의 경로
+            // 파일 다운로드 및 저장
             let file_path = cache_dir.join(if asset_name.ends_with(".md5") {"cvAutoTrack.md5"} else {asset_name});
             debug!("file_path: {:?}", file_path);
             let target_path = lib_path.clone().join(if asset_name.ends_with(".md5") {"cvAutoTrack.md5"} else {asset_name}); // ? cvAutoTrack instead of asset_name
-            let res = runtime.handle().block_on(download_file(
+
+            // 비동기 다운로드로 변경
+            download_file(
                 asset_url,
                 &file_path,
                 ws_handler.clone(),
-                update_info,
+                update_info.clone(),
                 requester_id.clone(),
-            ));
+            ).await?;
 
-            match res {
-                Ok(_) => {
-                    std::fs::create_dir_all(lib_path.clone())?;
-                    std::fs::rename(file_path, target_path)?;
-                }
-                Err(e) => {
-                    log::debug!("{}", e)
-                }
-            }
+            std::fs::create_dir_all(lib_path.clone())?;
+            std::fs::rename(file_path, target_path)?;
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     }
 
@@ -369,14 +337,14 @@ fn parse_iso8601(date: &str) -> std::result::Result<std::time::SystemTime, Box<d
     let datetime = chrono::DateTime::parse_from_rfc3339(date)?;
     Ok(datetime.into())
 }
+
 fn get_local_version(lib_path: &PathBuf) -> String {
     // TODO:
-    log::debug!("{}", lib_path.to_str().unwrap());
     match std::fs::read_to_string(lib_path.join("version.tag")) {
         Ok(contents) => contents.trim().to_string(),
         Err(_) => {
             log::debug!("Error: Failed to read version tag file.");
-            String::from("")
+            String::new()
         }
     }
 }
@@ -506,7 +474,7 @@ fn extract_files_from_zip(arch_path: &PathBuf, mappings: HashMap<&str, &PathBuf>
 }
 
 pub async fn register_events(
-    _event_bus: &Arc<EventBus>, 
+    event_bus: &Arc<EventBus>, 
     ws_handler: &Arc<WebSocketHandler>
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let ws_handler_app = ws_handler.clone();
@@ -527,9 +495,11 @@ pub async fn register_events(
             check_app_update(&config, id, (*ws_handler).clone(), force).await
         }
     }).await?;
+    let event_bus_lib = event_bus.clone();
     let ws_handler_lib = ws_handler.clone();
     let config_clone = config.clone();
     ws_handler.register("checkLibUpdate", move |id, params: RequestEvent| {
+        let event_bus = event_bus_lib.clone();
         let ws_handler = ws_handler_lib.clone();
         let config = config_clone.clone();
         async move {
@@ -541,7 +511,7 @@ pub async fn register_events(
             } else {
                 false
             };
-            check_lib_update(&config, id, (*ws_handler).clone(), force).await
+            check_lib_update(&config, id, &event_bus.clone(), (*ws_handler).clone(), force).await
         }
     }).await?;
 
@@ -584,12 +554,13 @@ pub async fn check_app_update(
 
 pub async fn check_lib_update(
     config: &AppConfig, 
-    client_id: String, 
+    client_id: String,
+    event_bus: &Arc<EventBus>,
     ws_handler: WebSocketHandler, 
     force: bool
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     if config.auto_app_update {
-        match download_cvat(ws_handler.clone(), client_id.clone(), force).await {
+        match download_cvat(&event_bus.clone(), ws_handler.clone(), client_id.clone(), force).await {
             Ok(_) => {
                 log::debug!("Lib Ready!");
                 Ok(())
@@ -642,6 +613,7 @@ pub async fn send_lib_update_info(
     let lib_path: PathBuf;
     let version_string: String;
     if update_info.is_none() {
+        log::debug!("update_info is none");
         lib_path = path::get_lib_path();
         version_string = get_local_version(&lib_path);
 
