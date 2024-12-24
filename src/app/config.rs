@@ -1,4 +1,5 @@
 use config::{Config, FileFormat};
+use std::sync::atomic::Ordering;
 use std::error::Error;
 use std::path::PathBuf;
 use crate::app::path;
@@ -6,6 +7,7 @@ use crate::app::path;
 use crate::events::EventBus;
 use crate::models::{AppConfig, RequestDataTypes, RequestEvent, SendEvent, WsEvent};
 use crate::websocket::WebSocketHandler;
+use crate::app::get_app_state;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -72,6 +74,7 @@ impl ConfigManager {
 pub fn init_config() -> Result<Config, std::io::Error> {
     log::debug!("Config File: 초기화 시작");
     let target_dir = path::get_app_path();
+    log::debug!("Target Dir: {}", target_dir.to_str().unwrap());
 
     match std::fs::create_dir_all(path::get_cache_path()) {
         Ok(_) => {},
@@ -91,14 +94,16 @@ pub fn init_config() -> Result<Config, std::io::Error> {
 
     let settings = Config::builder()
         .add_source(config::File::new(target_dir.join("config.json").to_str().unwrap(), FileFormat::Json))
-        /* .add_source(config::File::with_name(
-            target_dir.join("config.json").to_str().unwrap(),
-        )) */
-        .add_source(config::Environment::with_prefix("gpa").separator("_"))
         .build();
-    
+
+    log::debug!("Config: {:?}", settings);
+    let state = get_app_state();
     match settings {
-        Ok(settings) => Ok(settings),
+        Ok(config) => {
+            state.capture_interval.store(config.get_int("capture_interval").unwrap() as u32, Ordering::Release);
+            state.capture_delay_on_error.store(config.get_int("capture_delay_on_error").unwrap() as u32, Ordering::Release);
+            Ok(config.clone())
+        },
         Err(e) => {
             log::error!("Config File: 로드 실패");
             log::error!("Error: {}", e);
