@@ -18,6 +18,13 @@ use websocket::WebSocketHandler;
 
 #[tokio::main]
 async fn main() {
+    // tokio runtime 시작 전에 console subscriber 초기화
+    #[cfg(all(debug_assertions, feature = "debug-tools"))]
+    {
+        println!("init tokio-console");
+        console_subscriber::init();
+    }
+
     if is_process_already_running() {
         let _ = confirm_dialog(env!("CARGO_PKG_DESCRIPTION"), &format!("GPA가 이미 실행중입니다.\n추가로 실행된 프로그램은 잠시 후 종료됩니다."), true);
         std::thread::sleep(std::time::Duration::from_millis(5000));

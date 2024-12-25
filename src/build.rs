@@ -3,6 +3,11 @@ use std::path::Path;
 extern crate winres;
 
 fn main() {
+    if let Ok(rustflags) = std::env::var("RUSTFLAGS") {
+        println!("cargo:warning=RUSTFLAGS: {}", rustflags);
+    } else {
+        println!("cargo:warning=RUSTFLAGS not set!");
+    }
     if cfg!(target_os = "windows") {
         let mut res = winres::WindowsResource::new();
         let major_version: u64 = env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap();

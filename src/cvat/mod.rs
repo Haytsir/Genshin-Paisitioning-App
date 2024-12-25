@@ -48,16 +48,13 @@ pub fn unload_cvat() -> Result<()> {
     let state = get_app_state();
     log::debug!("Unloading CVAT...");
     
-    // instance를 먼저 가져와서 Option<cvAutoTrack>으로 소유권 이전
-    let mut instance = state.get_instance();
-    if let Some(cvat) = instance.as_ref() {
-        unsafe { cvat.close(); }
+    // write() 사용하여 쓰기 가능한 가드 획득
+    let mut instance = state.get_instance_mut();
+    if let Some(cvat) = instance.take() {
+        cvat.close();
     }
     
-    // instance를 None으로 설정
-    drop(instance);  // 명시적으로 읽기 lock 해제
-    state.set_instance(None);
-    
+    drop(instance);
     log::debug!("CVAT unloaded successfully");
     Ok(())
 }

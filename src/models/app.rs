@@ -118,6 +118,10 @@ impl AppState {
     pub fn set_instance(&self, instance: Option<cvAutoTrack>) {
         *self.instance.write() = instance;
     }
+
+    pub fn get_instance_mut(&self) -> parking_lot::RwLockWriteGuard<'_, Option<cvAutoTrack>> {
+        self.instance.write()
+    }
 }
 
 impl Default for AppState {

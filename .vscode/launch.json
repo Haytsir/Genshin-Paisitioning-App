@@ -12,12 +12,16 @@
             "cargo": {
                 "args": [
                     "build",
+                    "--features=debug-tools",
                     "--bin=genshin_paisitioning_app",
                     "--package=genshin_paisitioning_app"
                 ],
                 "filter": {
                     "name": "genshin_paisitioning_app",
                     "kind": "bin"
+                },
+                "env": {
+                    "RUSTFLAGS": "--cfg tokio_unstable"
                 }
             },
             "args": [],
@@ -30,6 +34,7 @@
             "cargo": {
                 "args": [
                     "test",
+                    "--features=debug-tools",
                     "--no-run",
                     "--bin=genshin_paisitioning_app",
                     "--package=genshin_paisitioning_app"
@@ -37,6 +42,9 @@
                 "filter": {
                     "name": "genshin_paisitioning_app",
                     "kind": "bin"
+                },
+                "env": {
+                    "RUSTFLAGS": "--cfg tokio_unstable"
                 }
             },
             "args": [],
