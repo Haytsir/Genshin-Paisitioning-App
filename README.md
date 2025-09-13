@@ -72,7 +72,8 @@ cvAutoTrack ==라이브러리로 호출됨=> GPA <= WebSocket으로 상호 통�
 
 3. GPA는 어떻게 끄나요?
 - GPA는 GPS와 연결된 상태였다면, GPS와 연결이 끊기는 경우(브라우저 탭을 닫는 등) 자동으로 종료됩니다. 하지만 연결이 안된 상태에서 직접 종료하려면 시스템 트레이에서 종료할 수 있습니다.
-![](https://raw.githubusercontent.com/Haytsir/Genshin-Paisitioning-App/refs/heads/master/docs/images/01.png)
+
+   ![](https://raw.githubusercontent.com/Haytsir/Genshin-Paisitioning-App/refs/heads/master/docs/images/01.png)
 
 4. 작동이 안되는 것 같아요! (GPA-GPS 연결 자체가 안될 경우)
 
