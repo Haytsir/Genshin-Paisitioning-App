@@ -35,7 +35,7 @@
 2. (윈11 이라면, 또는) 설정 - 앱 - 설치된 앱 - [원신 파이지셔닝] 검색 - […] 선택 - [제거]
 3. [윈도우 키]+[R] 키 - `%localappdata%` 입력 - genshin-paisitioning 폴더 찾아보고, 있다면 삭제 (없을 수도 있음)
 
-## Genshin Paisitioning Script (GPS)
+## [Genshin Paisitioning Script](https://github.com/Haytsir/Genshin-Paisitioning-App) (GPS)
 
 브라우저에서 GPA와 통신하고, 전달받은 인게임 위치를 맵스 화면에 찍어주기 위한 유저스크립트입니다.
 
