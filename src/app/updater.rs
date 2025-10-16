@@ -559,7 +559,7 @@ pub async fn check_lib_update(
     ws_handler: WebSocketHandler, 
     force: bool
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    if config.auto_app_update {
+    if config.auto_lib_update {
         match download_cvat(&event_bus.clone(), ws_handler.clone(), client_id.clone(), force).await {
             Ok(_) => {
                 log::debug!("Lib Ready!");
