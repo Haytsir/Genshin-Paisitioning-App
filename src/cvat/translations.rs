@@ -19,6 +19,10 @@ static ERROR_TRANSLATIONS: Lazy<HashMap<i64, ErrorInfo>> = Lazy::new(|| {
         patterns: vec!["无效句柄或指定句柄所指向窗口不存在"],
         messages: vec!["잘못된 핸들, 또는 지정된 핸들이 가리키는 창이 존재하지 않습니다."]
     });
+    m.insert(10, ErrorInfo { 
+        patterns: vec!["追踪失败，且没有历史信息"],
+        messages: vec!["추적이 실패했으며, 기록 정보가 없습니다."]
+    });
     m.insert(101, ErrorInfo { 
         patterns: vec!["读取图片失败，图片为空", "未能找到原神窗口句柄"],
         messages: vec!["이미지 읽기 실패, 이미지가 비어있음", "원신 창 핸들을 찾을 수 없음"]
